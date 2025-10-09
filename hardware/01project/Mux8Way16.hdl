@@ -1,0 +1,77 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/1/Mux8Way16.hdl
+/**
+ * 8-way 16-bit multiplexor:
+ * out = a if sel = 000
+ *       b if sel = 001
+ *       c if sel = 010
+ *       d if sel = 011
+ *       e if sel = 100
+ *       f if sel = 101
+ *       g if sel = 110
+ *       h if sel = 111
+ */
+CHIP Mux8Way16 {
+    IN a[16], b[16], c[16], d[16],
+       e[16], f[16], g[16], h[16],
+       sel[3];
+    OUT out[16];
+
+    PARTS:
+    Not(in=sel[0], out=notSel0);
+    Not(in=sel[1], out=notSel1);
+    Not(in=sel[2], out=notSel2);
+
+    And(a=notSel0, b=notSel1, out=tmpA);
+    And(a=tmpA, b=notSel2, out=selA);
+
+    And(a=sel[0], b=notSel1, out=tmpB);
+    And(a=tmpB, b=notSel2, out=selB);
+
+    And(a=notSel0, b=sel[1], out=tmpC);
+    And(a=tmpC, b=notSel2, out=selC);
+
+    And(a=sel[0], b=sel[1], out=tmpD);
+    And(a=tmpD, b=notSel2, out=selD);
+
+    And(a=notSel0, b=notSel1, out=tmpE);
+    And(a=tmpE, b=sel[2], out=selE);
+
+    And(a=sel[0], b=notSel1, out=tmpF);
+    And(a=tmpF, b=sel[2], out=selF);
+
+    And(a=notSel0, b=sel[1], out=tmpG);
+    And(a=tmpG, b=sel[2], out=selG);
+
+    And(a=sel[0], b=sel[1], out=tmpH);
+    And(a=tmpH, b=sel[2], out=selH);
+
+    Mux16(a=false, b=true, sel=selA, out=selA16);
+    Mux16(a=false, b=true, sel=selB, out=selB16);
+    Mux16(a=false, b=true, sel=selC, out=selC16);
+    Mux16(a=false, b=true, sel=selD, out=selD16);
+    Mux16(a=false, b=true, sel=selE, out=selE16);
+    Mux16(a=false, b=true, sel=selF, out=selF16);
+    Mux16(a=false, b=true, sel=selG, out=selG16);
+    Mux16(a=false, b=true, sel=selH, out=selH16);
+    
+    And16(a=a, b=selA16, out=outA);
+    And16(a=b, b=selB16, out=outB);
+    And16(a=c, b=selC16, out=outC);
+    And16(a=d, b=selD16, out=outD);
+    And16(a=e, b=selE16, out=outE);
+    And16(a=f, b=selF16, out=outF);
+    And16(a=g, b=selG16, out=outG);
+    And16(a=h, b=selH16, out=outH);
+
+    Or16(a=outA, b=outB, out=outOrAB);
+    Or16(a=outC, b=outD, out=outOrCD);
+    Or16(a=outE, b=outF, out=outOrEF);
+    Or16(a=outG, b=outH, out=outOrGH);
+
+    Or16(a=outOrAB, b=outOrCD, out=outOrABCD);
+    Or16(a=outOrEF, b=outOrGH, out=outOrEFGH);
+    Or16(a=outOrABCD, b=outOrEFGH, out=out);
+}
