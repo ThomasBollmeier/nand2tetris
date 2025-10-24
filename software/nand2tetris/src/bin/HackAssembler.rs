@@ -7,5 +7,15 @@ fn main() {
     }
 
     let asm_file = &args[1];
-    let _ = assembler::assemble(asm_file);
+    match assembler::assemble(asm_file) {
+        Ok(binary_code) => {
+            let hack_file = asm_file.replace(".asm", ".hack");
+            std::fs::write(&hack_file, binary_code.join("\n") + "\n").expect("Unable to write file");
+            println!("Assembled {} to {}", asm_file, hack_file);
+        }
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    }
 }
