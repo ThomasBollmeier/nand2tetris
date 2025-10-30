@@ -4,12 +4,12 @@ use crate::vmtrans::ast::{ASTNode, Segment};
 use crate::vmtrans::lexer::Lexer;
 use crate::vmtrans::token_type::TokenType::*;
 
-pub fn parse_string(input: &str) -> Result<ASTNode, String> {
-    let mut stream = StringCharStream::new(input);
-    parse(&mut stream)
+pub fn parse_vm_code(code: &str) -> Result<ASTNode, String> {
+    let mut stream = StringCharStream::new(code);
+    program(&mut stream)
 }
 
-pub fn parse(stream: &mut dyn Stream<char>) -> Result<ASTNode, String> {
+fn program(stream: &mut dyn Stream<char>) -> Result<ASTNode, String> {
     let mut lexer = Lexer::new(stream);
     let mut commands = Vec::new();
 
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn test_parse_basic() {
         let input = "push constant 10\npop local 0\nadd\n";
-        let ast = parse_string(input).unwrap();
+        let ast = parse_vm_code(input).unwrap();
         dbg!(&ast);
         match ast {
             ASTNode::Program { commands } => {
