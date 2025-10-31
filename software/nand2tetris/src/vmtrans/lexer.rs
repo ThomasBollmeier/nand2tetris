@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_lexer_basic() {
-        let input = "push constant 10\n\npop local 0\n// This is a comment\nadd\n";
+        let input = "push constant 10\n\npop temp 0\n// This is a comment\nadd\n";
         let mut char_stream = StringCharStream::new(input);
         let mut lexer = Lexer::new(&mut char_stream);
 
@@ -132,8 +132,8 @@ mod tests {
             VmToken::new(TokenType::Constant, "constant".to_string(), 1, 6),
             VmToken::new(TokenType::Index(10), "10".to_string(), 1, 15),
             VmToken::new(TokenType::Pop, "pop".to_string(), 3, 1),
-            VmToken::new(TokenType::Local, "local".to_string(), 3, 5),
-            VmToken::new(TokenType::Index(0), "0".to_string(), 3, 11),
+            VmToken::new(TokenType::Temp, "temp".to_string(), 3, 5),
+            VmToken::new(TokenType::Index(0), "0".to_string(), 3, 10),
             VmToken::new(TokenType::Add, "add".to_string(), 5, 1),
         ];
 
