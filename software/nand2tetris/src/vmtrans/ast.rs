@@ -14,6 +14,12 @@ pub enum ASTNode {
     And,
     Or,
     Not,
+    Label{name: String},
+    Goto{label: String},
+    IfGoto{label: String},
+    Function{name: String, n_vars: u16},
+    Call{name: String, n_args: u16},
+    Return,
 }
 
 impl ASTNode {
@@ -31,6 +37,12 @@ impl ASTNode {
             ASTNode::Or => "or".to_string(),
             ASTNode::Not => "not".to_string(),
             ASTNode::Program { .. } => "program".to_string(),
+            ASTNode::Label { name } => format!("label {}", name),
+            ASTNode::Goto { label } => format!("goto {}", label),
+            ASTNode::IfGoto { label } => format!("if-goto {}", label),
+            ASTNode::Function { name, n_vars } => format!("function {} {}", name, n_vars),
+            ASTNode::Call { name, n_args } => format!("call {} {}", name, n_args),
+            ASTNode::Return => "return".to_string(),
         }
     }
 }

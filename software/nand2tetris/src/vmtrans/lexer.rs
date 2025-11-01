@@ -130,11 +130,58 @@ mod tests {
         let expected_tokens = vec![
             VmToken::new(TokenType::Push, "push".to_string(), 1, 1),
             VmToken::new(TokenType::Constant, "constant".to_string(), 1, 6),
-            VmToken::new(TokenType::Index(10), "10".to_string(), 1, 15),
+            VmToken::new(TokenType::Number(10), "10".to_string(), 1, 15),
             VmToken::new(TokenType::Pop, "pop".to_string(), 3, 1),
             VmToken::new(TokenType::Temp, "temp".to_string(), 3, 5),
-            VmToken::new(TokenType::Index(0), "0".to_string(), 3, 10),
+            VmToken::new(TokenType::Number(0), "0".to_string(), 3, 10),
             VmToken::new(TokenType::Add, "add".to_string(), 5, 1),
+        ];
+
+        for expected in expected_tokens {
+            let token = lexer.advance().unwrap();
+            assert_eq!(token, expected);
+        }
+
+        assert!(lexer.advance().is_none());
+    }
+
+    #[test]
+    fn test_lexer_branching() {
+        let input = "label LOOP_START\ngoto LOOP_START\nif-goto END\n";
+        let mut char_stream = StringCharStream::new(input);
+        let mut lexer = Lexer::new(&mut char_stream);
+
+        let expected_tokens = vec![
+            VmToken::new(TokenType::Label, "label".to_string(), 1, 1),
+            VmToken::new(TokenType::Name("LOOP_START".to_string()), "LOOP_START".to_string(), 1, 7),
+            VmToken::new(TokenType::Goto, "goto".to_string(), 2, 1),
+            VmToken::new(TokenType::Name("LOOP_START".to_string()), "LOOP_START".to_string(), 2, 6),
+            VmToken::new(TokenType::IfGoto, "if-goto".to_string(), 3, 1),
+            VmToken::new(TokenType::Name("END".to_string()), "END".to_string(), 3, 9),
+        ];
+
+        for expected in expected_tokens {
+            let token = lexer.advance().unwrap();
+            assert_eq!(token, expected);
+        }
+
+        assert!(lexer.advance().is_none());
+    }
+
+    #[test]
+    fn test_lexer_function_calls() {
+        let input = "function SimpleFunction 3\ncall SimpleFunction 2\nreturn\n";
+        let mut char_stream = StringCharStream::new(input);
+        let mut lexer = Lexer::new(&mut char_stream);
+
+        let expected_tokens = vec![
+            VmToken::new(TokenType::Function, "function".to_string(), 1, 1),
+            VmToken::new(TokenType::Name("SimpleFunction".to_string()), "SimpleFunction".to_string(), 1, 10),
+            VmToken::new(TokenType::Number(3), "3".to_string(), 1, 25),
+            VmToken::new(TokenType::Call, "call".to_string(), 2, 1),
+            VmToken::new(TokenType::Name("SimpleFunction".to_string()), "SimpleFunction".to_string(), 2, 6),
+            VmToken::new(TokenType::Number(2), "2".to_string(), 2, 21),
+            VmToken::new(TokenType::Return, "return".to_string(), 3, 1),
         ];
 
         for expected in expected_tokens {

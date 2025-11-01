@@ -28,15 +28,21 @@ impl CodeWriter {
                 for command in commands {
                     lines.extend(self.write_command(command)?);
                 }
-                lines.push("// end of program:".to_string());
-                let end_label = format!("{}.END", self.static_prefix.to_ascii_uppercase());
-                lines.push(format!("({end_label})"));
-                lines.push(format!("@{end_label}"));
-                lines.push("0;JMP".to_string());
+                lines.extend(self.write_end_of_program());
                 Ok(lines)
             }
             _ => Err("Expected Program node".to_string()),
         }
+    }
+
+    fn write_end_of_program(&self) -> Vec<String> {
+        let mut lines = vec![];
+        let end_label = format!("{}.END", self.static_prefix.to_ascii_uppercase());
+        lines.push("// end of program:".to_string());
+        lines.push(format!("({end_label})"));
+        lines.push(format!("@{end_label}"));
+        lines.push("0;JMP".to_string());
+        lines
     }
 
     fn write_command(&mut self, command: &ASTNode) -> Result<Vec<String>, String> {
@@ -49,11 +55,37 @@ impl CodeWriter {
             ASTNode::Add | ASTNode::Sub | ASTNode::And | ASTNode::Or => self.write_binary(command)?,
             ASTNode::Eq | ASTNode::Lt | ASTNode::Gt => self.write_comparison(command)?,
             ASTNode::Neg | ASTNode::Not => self.write_unary(command)?,
+            ASTNode::Label{ name } => self.write_label(name),
+            ASTNode::Goto{ label } => self.write_goto(label),
+            ASTNode::IfGoto{ label } => self.write_if_goto(label),
             _ => return Err("Unsupported command".to_string()),
         };
         lines.extend(command_lines);
 
         Ok(lines)
+    }
+
+    fn write_if_goto(&self, label: &str) -> Vec<String> {
+        vec![
+            // Pop value
+            "@SP".to_string(),
+            "M=M-1".to_string(),
+            "A=M".to_string(),
+            "D=M".to_string(), // D = value
+            format!("@{label}"),
+            "D;JNE".to_string() // If D != 0, jump to label
+        ]
+    }
+
+    fn write_goto(&self, label: &str) -> Vec<String> {
+        vec![
+            format!("@{}", label),
+            "0;JMP".to_string(),
+        ]
+    }
+
+    fn write_label(&self, name: &str) -> Vec<String> {
+        vec![format!("({name})")]
     }
 
 
