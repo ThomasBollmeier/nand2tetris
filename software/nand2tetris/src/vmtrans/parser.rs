@@ -77,7 +77,7 @@ fn function(lexer: &mut Lexer) -> Result<ASTNode, String> {
         _ => return Err(format!("Invalid number of local variables: {:?}", n_vars_token)),
     };
 
-    Ok(ASTNode::Function { name, n_vars })
+    Ok(ASTNode::Function { name, n_locals: n_vars })
 }
 
 fn if_goto(lexer: &mut Lexer) -> Result<ASTNode, String> {
@@ -215,7 +215,7 @@ mod tests {
             ASTNode::Program { commands } => {
                 assert_eq!(commands.len(), 3);
                 match &commands[0] {
-                    ASTNode::Function { name, n_vars } => {
+                    ASTNode::Function { name, n_locals: n_vars } => {
                         assert_eq!(name, "SimpleFunction");
                         assert_eq!(*n_vars, 3);
                     }

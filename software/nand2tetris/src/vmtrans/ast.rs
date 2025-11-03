@@ -17,7 +17,7 @@ pub enum ASTNode {
     Label{name: String},
     Goto{label: String},
     IfGoto{label: String},
-    Function{name: String, n_vars: u16},
+    Function{name: String, n_locals: u16},
     Call{name: String, n_args: u16},
     Return,
 }
@@ -40,7 +40,7 @@ impl ASTNode {
             ASTNode::Label { name } => format!("label {}", name),
             ASTNode::Goto { label } => format!("goto {}", label),
             ASTNode::IfGoto { label } => format!("if-goto {}", label),
-            ASTNode::Function { name, n_vars } => format!("function {} {}", name, n_vars),
+            ASTNode::Function { name, n_locals} => format!("function {} {}", name, n_locals),
             ASTNode::Call { name, n_args } => format!("call {} {}", name, n_args),
             ASTNode::Return => "return".to_string(),
         }
