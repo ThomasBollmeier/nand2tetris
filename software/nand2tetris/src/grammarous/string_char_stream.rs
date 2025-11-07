@@ -12,6 +12,11 @@ impl StringCharStream {
             position: 0,
         }
     }
+
+    pub fn new_from_file(file_name: &str) -> Result<Self, std::io::Error> {
+        let content = std::fs::read_to_string(file_name)?;
+        Ok(Self::new(&content))
+    }
 }
 
 impl Stream<char> for StringCharStream {

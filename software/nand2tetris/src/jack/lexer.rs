@@ -3,11 +3,11 @@ use crate::grammarous::token::Token;
 use crate::jack::token_type::TokenType;
 use std::collections::HashMap;
 
-type JackToken = Token<TokenType>;
+pub type JackToken = Token<TokenType>;
 
 const MAX_JACK_INT_VALUE: u16 = 32767;
 
-pub struct LexicalAnalyzer<'a> {
+pub struct Lexer<'a> {
     stream: BufferedStream<'a, char>,
     line: usize,
     column: usize,
@@ -15,7 +15,7 @@ pub struct LexicalAnalyzer<'a> {
     keywords: HashMap<String, TokenType>,
 }
 
-impl<'a> LexicalAnalyzer<'a> {
+impl<'a> Lexer<'a> {
     pub fn new(stream: &'a mut dyn Stream<char>) -> Self {
         Self {
             stream: BufferedStream::new(stream),
@@ -216,7 +216,7 @@ impl<'a> LexicalAnalyzer<'a> {
     }
 }
 
-impl Stream<JackToken> for LexicalAnalyzer<'_> {
+impl Stream<JackToken> for Lexer<'_> {
     fn advance(&mut self) -> Option<JackToken> {
         loop {
             self.skip_whitespace();
@@ -271,13 +271,13 @@ class Main {
 
     function void main() {
         var int answer;
-        let answer = 42;
+        let answer = 42; // The answer to everything
         Output.println("Hello, World!");
     }
 
 }"#;
         let mut char_stream = StringCharStream::new(input);
-        let mut lexer = LexicalAnalyzer::new(&mut char_stream);
+        let mut lexer = Lexer::new(&mut char_stream);
 
         let mut tokens = Vec::new();
         while let Some(token) = lexer.advance() {
