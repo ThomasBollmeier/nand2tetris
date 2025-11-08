@@ -320,7 +320,7 @@ impl<'a> Parser<'a> {
                 self.parse_term(&mut term)?;
             }
             Identifier => {
-                let lookahead = self.peek_nth(2);
+                let lookahead = self.peek_nth(1);
                 match lookahead {
                     Some(token)
                         if token.token_type.get_category() == LParen
@@ -461,6 +461,7 @@ impl<'a> Parser<'a> {
         let next_token = self.peek();
         if let Some(token) = next_token {
             if token.token_type.get_category() == RParen {
+                subroutine_dec.add_child(param_list);
                 return Ok(());
             }
         } else {
@@ -569,8 +570,8 @@ impl<'a> Parser<'a> {
         match self.stream.advance() {
             Some(token) if token.token_type.get_category() == expected => Ok(token),
             Some(token) => Err(format!(
-                "Expected {:?}, found {:?}",
-                expected, token.token_type
+                "[{}, {}]: Expected {:?}, found {:?}",
+                token.line, token.column, expected, token.token_type
             )),
             None => Err("Unexpected end of input".to_string()),
         }
@@ -599,10 +600,11 @@ mod tests {
     use super::*;
     use crate::grammarous::string_char_stream::StringCharStream;
     use crate::jack::lexer::Lexer;
+    use crate::jack::ast_printer::{AstPrinter, ConsoleOutput};
 
     #[test]
     fn test_parse_class() {
-        let input = r#"
+        run_code(r#"
         class Person {
             field boolean isMarried, isMale;
 
@@ -617,8 +619,11 @@ mod tests {
                 return;
             }
         }
-        "#;
-        let mut char_stream = StringCharStream::new(input);
+        "#);
+    }
+
+    fn run_code(code: &str) {
+        let mut char_stream = StringCharStream::new(code);
         let mut lexer = Lexer::new(&mut char_stream);
         let mut parser = Parser::new(&mut lexer);
 
@@ -628,5 +633,11 @@ mod tests {
             "Failed to parse class: {:?}",
             ast.err().unwrap()
         );
+
+        let mut ast_printer = AstPrinter::default();
+        let mut output = ConsoleOutput {};
+        ast_printer.set_output(&mut output);
+
+        ast_printer.print_ast(&ast.unwrap());
     }
 }

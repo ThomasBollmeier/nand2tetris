@@ -1,4 +1,3 @@
-
 #[derive(clap::Parser, Debug, Clone)]
 #[command(name="VMTranslator", version, about="Translates VM code to Hack assembly", long_about = None)]
 pub struct Cli {
