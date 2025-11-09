@@ -6,8 +6,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Cli::parse();
     let jack_files = get_jack_files(&config.source);
 
+    let output_dir = match &config.output_dir {
+        Some(dir) => Some(dir.as_str()),
+        None => None,
+    };
+
     for file in jack_files {
-        jack::analyze_file(&file)?;
+        jack::analyze_file(&file, output_dir)?;
     }
 
     Ok(())
