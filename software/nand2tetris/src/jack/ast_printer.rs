@@ -1,4 +1,5 @@
 use crate::jack::ast::Ast;
+use crate::jack::lexer::JackToken;
 
 pub struct AstPrinter<'a> {
     indent: usize,
@@ -31,9 +32,24 @@ impl <'a> AstPrinter<'a> {
             Ast::Terminal(token) => {
                 let tag_name = self.get_token_tag_name(token);
                 self.print_text(&format!("<{}> {} </{}>",
-                    tag_name, token.lexeme, tag_name));
+                    tag_name, Self::escape_xml(&Self::token_value(token)), tag_name));
             }
         }
+    }
+
+    fn token_value(token: &JackToken) -> String {
+        match token.token_type.get_category() {
+            crate::jack::token_type::TokenTypeCategory::StringConstant => {
+                token.lexeme.trim_matches('"').to_string()
+            }
+            _ => token.lexeme.clone(),
+        }
+    }
+
+    fn escape_xml(text: &str) -> String {
+        text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
     }
 
     fn get_token_tag_name(&self, token: &crate::jack::lexer::JackToken) -> &str {
@@ -90,7 +106,7 @@ impl <'a> AstPrinter<'a> {
         match &mut self.output {
             Some(output) => {
                 for _ in 0..self.indent {
-                    output.print("\t");
+                    output.print("  ");
                 }
                 output.println(text);
             },
