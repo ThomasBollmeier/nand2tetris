@@ -1,8 +1,10 @@
 pub mod token_type;
 mod lexer;
-pub mod ast;
-pub mod ast_printer;
+pub mod parse_tree;
+pub mod parse_tree_printer;
 mod parser;
+mod ast;
+mod parse_tree_converter;
 mod cli;
 
 use std::path::Path;
@@ -11,7 +13,7 @@ pub use parser::Parser;
 pub use cli::Cli;
 
 use crate::grammarous::string_char_stream::StringCharStream;
-use crate::jack::ast_printer::{AstPrinter, StringOutput};
+use crate::jack::parse_tree_printer::{ParseTreePrinter, StringOutput};
 
 pub fn analyze_file(file_path: &str, output_dir: Option<&str>) -> Result<(), anyhow::Error> {
     let mut stream = StringCharStream::new_from_file(file_path)?;
@@ -23,7 +25,7 @@ pub fn analyze_file(file_path: &str, output_dir: Option<&str>) -> Result<(), any
         .map_err(|e| anyhow::anyhow!("Parsing error in file {}: {}", file_path, e))?;
 
     let mut output = StringOutput::new();
-    let mut ast_printer = AstPrinter::default();
+    let mut ast_printer = ParseTreePrinter::default();
     ast_printer.set_output(&mut output);
     ast_printer.print_ast(&ast);
     let content = output.get_content();

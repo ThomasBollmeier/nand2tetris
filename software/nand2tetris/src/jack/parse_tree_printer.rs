@@ -1,14 +1,14 @@
-use crate::jack::ast::Ast;
+use crate::jack::parse_tree::ParseTreeNode;
 use crate::jack::lexer::JackToken;
 
-pub struct AstPrinter<'a> {
+pub struct ParseTreePrinter<'a> {
     indent: usize,
     output: Option<&'a mut dyn Output>,
 }
 
-impl <'a> AstPrinter<'a> {
+impl <'a> ParseTreePrinter<'a> {
     pub fn new() -> Self {
-        AstPrinter {
+        ParseTreePrinter {
             indent: 0,
             output: None,
         }
@@ -18,9 +18,9 @@ impl <'a> AstPrinter<'a> {
         self.output = Some(output);
     }
 
-    pub fn print_ast(&mut self, ast: &Ast) {
+    pub fn print_ast(&mut self, ast: &ParseTreeNode) {
         match ast {
-            Ast::NonTerminal(data) => {
+            ParseTreeNode::NonTerminal(data) => {
                 self.print_text(&format!("<{}>", data.name));
                 self.indent += 1;
                 for child in &data.children {
@@ -29,7 +29,7 @@ impl <'a> AstPrinter<'a> {
                 self.indent -= 1;
                 self.print_text(&format!("</{}>", data.name));
             }
-            Ast::Terminal(token) => {
+            ParseTreeNode::Terminal(token) => {
                 let tag_name = self.get_token_tag_name(token);
                 self.print_text(&format!("<{}> {} </{}>",
                     tag_name, Self::escape_xml(&Self::token_value(token)), tag_name));
@@ -115,9 +115,9 @@ impl <'a> AstPrinter<'a> {
     }
 }
 
-impl <'a> Default for AstPrinter<'a> {
+impl <'a> Default for ParseTreePrinter<'a> {
     fn default() -> Self {
-        AstPrinter::new()
+        ParseTreePrinter::new()
     }
 }
 
