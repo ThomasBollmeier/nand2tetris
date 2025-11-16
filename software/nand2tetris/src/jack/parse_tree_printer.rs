@@ -1,6 +1,14 @@
 use crate::jack::parse_tree::ParseTreeNode;
 use crate::jack::lexer::JackToken;
 
+pub fn print_parse_tree(ast: &ParseTreeNode) {
+    let mut printer = ParseTreePrinter::new();
+    let mut output = ConsoleOutput;
+    printer.set_output(&mut output);
+    printer.print_ast(ast);
+}
+
+
 pub struct ParseTreePrinter<'a> {
     indent: usize,
     output: Option<&'a mut dyn Output>,

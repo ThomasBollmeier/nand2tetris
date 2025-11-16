@@ -2,7 +2,7 @@ use crate::jack::ast::*;
 use crate::jack::parse_tree::{ParseTreeNode, ParseTreeNodeData};
 use crate::jack::token_type::TokenTypeCategory;
 
-pub fn convert_parse_tree_to_ast(class_node: &ParseTreeNode) -> Result<Class, String> {
+pub fn convert_class(class_node: &ParseTreeNode) -> Result<Class, String> {
     let class_node = match class_node {
         ParseTreeNode::NonTerminal(node) if node.name == "class" => node,
         _ => return Err("Expected class parse tree node".to_string()),
@@ -52,15 +52,7 @@ fn convert_class_var_declaration(
 
     let type_node = children.get(1).ok_or("Missing type node")?;
     let var_type = convert_type_node(type_node)?;
-    let mut names = vec![];
-
-    for child in &class_var_dec_node.children {
-        if let ParseTreeNode::Terminal(token) = child {
-            if token.token_type.get_category() == TokenTypeCategory::Identifier {
-                names.push(token.lexeme.clone());
-            }
-        }
-    }
+    let names = get_identifiers(children);
 
     Ok(ClassVarDec{
         category,
@@ -106,17 +98,19 @@ fn convert_subroutine_declaration(
     };
 
     let mut parameters= vec![];
-    let body = vec![];
+    let mut body= None;
 
     for child in children {
         if let ParseTreeNode::NonTerminal(node) = child {
             match node.name.as_str() {
                 "parameterList" => { parameters = convert_parameter_list(node)?; }
-                "subroutineBody" => { /* TODO: handle body */ }
+                "subroutineBody" => { body = Some(convert_subroutine_body(node)?); }
                 _ => {}
             }
         }
     }
+
+    let body = body.ok_or("Missing subroutine body")?;
 
     Ok(SubroutineDec{
         category,
@@ -125,6 +119,185 @@ fn convert_subroutine_declaration(
         parameters,
         body,
     })
+}
+
+fn convert_subroutine_body(
+    subroutine_body_node: &ParseTreeNodeData,
+) -> Result<Body, String> {
+    let children = &subroutine_body_node.children;
+    let mut var_declarations = vec![];
+    let mut statements = vec![];
+
+    for child in children {
+        if let ParseTreeNode::NonTerminal(node) = child {
+            match node.name.as_str() {
+                "varDec" => {
+                    var_declarations.push(convert_var_declaration(node)?);
+                }
+                "statements" => {
+                    statements = convert_statements(node)?;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Ok(Body{
+        var_declarations,
+        statements,
+    })
+}
+
+fn convert_statements(statements_node: &ParseTreeNodeData) -> Result<Vec<Statement>, String> {
+    let children = &statements_node.children;
+    let mut statements = vec![];
+
+    for child in children {
+        if let ParseTreeNode::NonTerminal(node) = child {
+            match node.name.as_str() {
+                "letStatement" => {
+                    statements.push(convert_let_statement(node)?);
+                }
+                "ifStatement" => {
+                    statements.push(convert_if_statement(node)?);
+                }
+                "whileStatement" => {
+                    // Implement conversion for whileStatement
+                }
+                "doStatement" => {
+                    // Implement conversion for doStatement
+                }
+                "returnStatement" => {
+                    statements.push(convert_return_statement(node)?);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Ok(statements)
+}
+
+fn convert_return_statement(return_stmt_node: &ParseTreeNodeData) -> Result<Statement, String> {
+    let children = &return_stmt_node.children;
+
+    let return_expression = if children.len() > 2 {
+        let expr_node = get_non_terminal_child_at(children, 1, "expression")?;
+        Some(convert_expression(expr_node)?)
+    } else {
+        None
+    };
+
+    Ok(Statement::Return{
+        value: return_expression,
+    })
+}
+
+fn convert_if_statement(if_stmt_node: &ParseTreeNodeData) -> Result<Statement, String> {
+    let children = &if_stmt_node.children;
+
+    let condition_node = get_non_terminal_child_at(children, 2, "expression")?;
+    let condition = convert_expression(condition_node)?;
+
+    let statements_node = get_non_terminal_child_at(children, 5, "statements")?;
+    let if_statements  = convert_statements(statements_node)?;
+    let mut else_statements = None;
+
+    if children.len() > 6 {
+        let else_statements_node = get_non_terminal_child_at(children, 9, "statements")?;
+        else_statements = Some(convert_statements(else_statements_node)?);
+    }
+
+    Ok(Statement::If{
+        condition,
+        if_statements,
+        else_statements,
+    })
+}
+
+fn get_non_terminal_child_at<'a>(children: &'a[ParseTreeNode], idx: usize, name: &str) -> Result<&'a ParseTreeNodeData, String> {
+    let child = children.get(idx).ok_or("Child index out of bounds".to_string())?;
+    if let ParseTreeNode::NonTerminal(n) = child {
+        if n.name == name {
+            return Ok(n);
+        }
+    }
+    Err("No non-terminal found".to_string())
+}
+
+fn convert_let_statement(let_stmt_node: &ParseTreeNodeData) -> Result<Statement, String> {
+    let children = &let_stmt_node.children;
+
+    let var_name = if let Some(ParseTreeNode::Terminal(token)) = children.get(1) {
+        token.lexeme.clone()
+    } else {
+        return Err("Invalid variable name node in let statement".to_string());
+    };
+
+    let lbracket_node = children
+        .get(2)
+        .ok_or("Missing node after variable name in let statement")?;
+
+    let index_expression = match lbracket_node {
+        ParseTreeNode::Terminal(token) if token.token_type.get_category() == TokenTypeCategory::LBracket => {
+            let expr_node = children.get(3).ok_or("Missing expression")?;
+            let expr = match expr_node {
+                ParseTreeNode::NonTerminal(node) if node.name == "expression" => convert_expression(node)?,
+                _ => return Err("Invalid index expression node in let statement".to_string())
+            };
+            Some(expr)
+        }
+        _ => None
+    };
+
+    let value_expression = if let Some(expr_node) = children.get(children.len() - 2) {
+        match expr_node {
+            ParseTreeNode::NonTerminal(node) if node.name == "expression" => convert_expression(node)?,
+            _ => return Err("Invalid value expression node in let statement".to_string())
+        }
+    } else {
+        return Err("Invalid value expression node in let statement".to_string());
+    };
+
+    Ok(Statement::Let{
+        var_name,
+        index_expression,
+        value_expression,
+    })
+}
+
+fn convert_expression(expression_node: &ParseTreeNodeData) -> Result<Expression, String> {
+    // Implement conversion for expressions
+    Ok(Expression{
+        term: Box::new(Term::IntegerConstant(0)),
+        rest: vec![],
+    }) // Placeholder
+}
+
+fn convert_var_declaration(var_dec_node: &ParseTreeNodeData) -> Result<VarDec, String> {
+    let children = &var_dec_node.children;
+
+    let type_node = children.get(1).ok_or("Missing type node")?;
+    let var_type = convert_type_node(type_node)?;
+    let names = get_identifiers(&children[2..]);
+
+    Ok(VarDec{
+        var_type,
+        names,
+    })
+}
+
+fn get_identifiers(nodes: &[ParseTreeNode]) -> Vec<String> {
+    let mut identifiers = vec![];
+    for node in nodes {
+        if let ParseTreeNode::Terminal(token) = node {
+            if token.token_type.get_category() == TokenTypeCategory::Identifier {
+                identifiers.push(token.lexeme.clone());
+            }
+        }
+    }
+
+    identifiers
 }
 
 fn convert_parameter_list(param_list_node: &ParseTreeNodeData) -> Result<Vec<(Type, String)>, String> {
@@ -153,6 +326,7 @@ fn convert_parameter_list(param_list_node: &ParseTreeNodeData) -> Result<Vec<(Ty
 mod tests {
     use crate::grammarous::StringCharStream;
     use crate::jack::{lexer, parser};
+    use crate::jack::parse_tree_printer;
     use super::*;
 
     #[test]
@@ -168,29 +342,73 @@ mod tests {
                 return this;
             }
 
-            method void setMarried(boolean isMarried) {
-                var int answer;
-                let answer = 41 + 1;
+            method void setMarried(boolean isMarried_) {
+                var boolean changed;
+                if (isMarried = isMarried_) {
+                    return;
+                } else {
+                    let changed = true;
+                }
 
+                let isMarried = isMarried_;
+                return;
             }
 
             method void sayHello() {
-                do Output.printString("Hallo Welt!");
+                var String greeting;
+                let greeting = "Hallo Welt";
+                do Output.printString(greeting);
                 return;
             }
         }
         "#;
 
-        let mut stream = StringCharStream::new(code);
-        let mut lexer = lexer::Lexer::new(&mut stream);
-        let mut parser = parser::Parser::new(&mut lexer);
-
-        let parse_tree = parser.parse_class().expect("Failed to parse class");
-        let ast = convert_parse_tree_to_ast(&parse_tree).expect("Failed to convert parse tree to AST");
+        let ast = run_code_to_ast_conversion(code).expect("Failed to convert code to AST");
 
         dbg!(&ast);
         assert_eq!(ast.name, "Person");
         assert!(!ast.class_var_declarations.is_empty());
         assert!(!ast.subroutine_declarations.is_empty());
+    }
+
+    #[test]
+    fn test_if_statement_conversion() {
+        let code = r#"
+        class Test {
+            method void testIf(boolean condition) {
+                if (condition) {
+                    return;
+                } else {
+                    let condition = false;
+                }
+                return;
+            }
+        }
+        "#;
+
+        let ast = run_code_to_ast_conversion(code).expect("Failed to convert code to AST");
+
+        dbg!(&ast);
+
+        let subroutine = &ast.subroutine_declarations[0];
+        let body = &subroutine.body;
+        let statements = &body.statements;
+
+        assert_eq!(statements.len(), 2);
+        if let Statement::If { condition: _, if_statements: _, else_statements: Some(else_stmts) } = &statements[0] {
+            assert_eq!(else_stmts.len(), 1);
+        } else {
+            panic!("Expected an if statement with else branch");
+        }
+    }
+
+    fn run_code_to_ast_conversion(code: &str) -> Result<Class, String> {
+        let mut stream = StringCharStream::new(code);
+        let mut lexer = lexer::Lexer::new(&mut stream);
+        let mut parser = parser::Parser::new(&mut lexer);
+
+        let parse_tree = parser.parse_class().map_err(|e| format!("Parsing error: {}", e))?;
+        parse_tree_printer::print_parse_tree(&parse_tree);
+        convert_class(&parse_tree)
     }
 }

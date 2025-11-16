@@ -35,7 +35,13 @@ pub struct SubroutineDec {
     pub return_type: Option<Type>,
     pub name: String,
     pub parameters: Vec<(Type, String)>,
-    pub body: Vec<Statement>,
+    pub body: Body,
+}
+
+#[derive(Debug, Clone)]
+pub struct Body {
+    pub var_declarations: Vec<VarDec>,
+    pub statements: Vec<Statement>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +49,12 @@ pub enum SubroutineCategory {
     Constructor,
     Function,
     Method,
+}
+
+#[derive(Debug, Clone)]
+pub struct VarDec {
+    pub var_type: Type,
+    pub names: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
