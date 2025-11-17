@@ -1,4 +1,5 @@
 use crate::jack::ast::*;
+use crate::jack::lexer::JackToken;
 use crate::jack::parse_tree::{ParseTreeNode, ParseTreeNodeData};
 use crate::jack::token_type::TokenTypeCategory;
 
@@ -52,9 +53,9 @@ fn convert_class_var_declaration(
 
     let type_node = children.get(1).ok_or("Missing type node")?;
     let var_type = convert_type_node(type_node)?;
-    let names = get_identifiers(children);
+    let names = get_identifiers(&children[2..]);
 
-    Ok(ClassVarDec{
+    Ok(ClassVarDec {
         category,
         var_type,
         names,
@@ -79,9 +80,15 @@ fn convert_subroutine_declaration(
     let children = &subroutine_dec_node.children;
 
     let category = match children.get(0) {
-        Some(ParseTreeNode::Terminal(token)) if token.lexeme == "function" => SubroutineCategory::Function,
-        Some(ParseTreeNode::Terminal(token)) if token.lexeme == "method" => SubroutineCategory::Method,
-        Some(ParseTreeNode::Terminal(token)) if token.lexeme == "constructor" => SubroutineCategory::Constructor,
+        Some(ParseTreeNode::Terminal(token)) if token.lexeme == "function" => {
+            SubroutineCategory::Function
+        }
+        Some(ParseTreeNode::Terminal(token)) if token.lexeme == "method" => {
+            SubroutineCategory::Method
+        }
+        Some(ParseTreeNode::Terminal(token)) if token.lexeme == "constructor" => {
+            SubroutineCategory::Constructor
+        }
         _ => return Err("Invalid subroutine category node".to_string()),
     };
 
@@ -97,14 +104,18 @@ fn convert_subroutine_declaration(
         return Err("Invalid subroutine name node".to_string());
     };
 
-    let mut parameters= vec![];
-    let mut body= None;
+    let mut parameters = vec![];
+    let mut body = None;
 
     for child in children {
         if let ParseTreeNode::NonTerminal(node) = child {
             match node.name.as_str() {
-                "parameterList" => { parameters = convert_parameter_list(node)?; }
-                "subroutineBody" => { body = Some(convert_subroutine_body(node)?); }
+                "parameterList" => {
+                    parameters = convert_parameter_list(node)?;
+                }
+                "subroutineBody" => {
+                    body = Some(convert_subroutine_body(node)?);
+                }
                 _ => {}
             }
         }
@@ -112,7 +123,7 @@ fn convert_subroutine_declaration(
 
     let body = body.ok_or("Missing subroutine body")?;
 
-    Ok(SubroutineDec{
+    Ok(SubroutineDec {
         category,
         return_type,
         name,
@@ -121,9 +132,7 @@ fn convert_subroutine_declaration(
     })
 }
 
-fn convert_subroutine_body(
-    subroutine_body_node: &ParseTreeNodeData,
-) -> Result<Body, String> {
+fn convert_subroutine_body(subroutine_body_node: &ParseTreeNodeData) -> Result<Body, String> {
     let children = &subroutine_body_node.children;
     let mut var_declarations = vec![];
     let mut statements = vec![];
@@ -142,7 +151,7 @@ fn convert_subroutine_body(
         }
     }
 
-    Ok(Body{
+    Ok(Body {
         var_declarations,
         statements,
     })
@@ -182,13 +191,13 @@ fn convert_return_statement(return_stmt_node: &ParseTreeNodeData) -> Result<Stat
     let children = &return_stmt_node.children;
 
     let return_expression = if children.len() > 2 {
-        let expr_node = get_non_terminal_child_at(children, 1, "expression")?;
+        let expr_node = get_non_terminal_at(children, 1, "expression")?;
         Some(convert_expression(expr_node)?)
     } else {
         None
     };
 
-    Ok(Statement::Return{
+    Ok(Statement::Return {
         value: return_expression,
     })
 }
@@ -196,33 +205,55 @@ fn convert_return_statement(return_stmt_node: &ParseTreeNodeData) -> Result<Stat
 fn convert_if_statement(if_stmt_node: &ParseTreeNodeData) -> Result<Statement, String> {
     let children = &if_stmt_node.children;
 
-    let condition_node = get_non_terminal_child_at(children, 2, "expression")?;
+    let condition_node = get_non_terminal_at(children, 2, "expression")?;
     let condition = convert_expression(condition_node)?;
 
-    let statements_node = get_non_terminal_child_at(children, 5, "statements")?;
-    let if_statements  = convert_statements(statements_node)?;
+    let statements_node = get_non_terminal_at(children, 5, "statements")?;
+    let if_statements = convert_statements(statements_node)?;
     let mut else_statements = None;
 
     if children.len() > 6 {
-        let else_statements_node = get_non_terminal_child_at(children, 9, "statements")?;
+        let else_statements_node = get_non_terminal_at(children, 9, "statements")?;
         else_statements = Some(convert_statements(else_statements_node)?);
     }
 
-    Ok(Statement::If{
+    Ok(Statement::If {
         condition,
         if_statements,
         else_statements,
     })
 }
 
-fn get_non_terminal_child_at<'a>(children: &'a[ParseTreeNode], idx: usize, name: &str) -> Result<&'a ParseTreeNodeData, String> {
-    let child = children.get(idx).ok_or("Child index out of bounds".to_string())?;
-    if let ParseTreeNode::NonTerminal(n) = child {
+fn get_non_terminal_at<'a>(
+    nodes: &'a [ParseTreeNode],
+    idx: usize,
+    name: &str,
+) -> Result<&'a ParseTreeNodeData, String> {
+    let node = nodes
+        .get(idx)
+        .ok_or("Child index out of bounds".to_string())?;
+    if let ParseTreeNode::NonTerminal(n) = node {
         if n.name == name {
             return Ok(n);
         }
     }
     Err("No non-terminal found".to_string())
+}
+
+fn get_terminal_at(
+    nodes: &[ParseTreeNode],
+    idx: usize,
+    token_type_category: TokenTypeCategory,
+) -> Result<&JackToken, String> {
+    let node = nodes
+        .get(idx)
+        .ok_or("Child index out of bounds".to_string())?;
+    if let ParseTreeNode::Terminal(token) = node {
+        if token.token_type.get_category() == token_type_category {
+            return Ok(token);
+        }
+    }
+    Err("No terminal found".to_string())
 }
 
 fn convert_let_statement(let_stmt_node: &ParseTreeNodeData) -> Result<Statement, String> {
@@ -239,27 +270,33 @@ fn convert_let_statement(let_stmt_node: &ParseTreeNodeData) -> Result<Statement,
         .ok_or("Missing node after variable name in let statement")?;
 
     let index_expression = match lbracket_node {
-        ParseTreeNode::Terminal(token) if token.token_type.get_category() == TokenTypeCategory::LBracket => {
+        ParseTreeNode::Terminal(token)
+            if token.token_type.get_category() == TokenTypeCategory::LBracket =>
+        {
             let expr_node = children.get(3).ok_or("Missing expression")?;
             let expr = match expr_node {
-                ParseTreeNode::NonTerminal(node) if node.name == "expression" => convert_expression(node)?,
-                _ => return Err("Invalid index expression node in let statement".to_string())
+                ParseTreeNode::NonTerminal(node) if node.name == "expression" => {
+                    convert_expression(node)?
+                }
+                _ => return Err("Invalid index expression node in let statement".to_string()),
             };
             Some(expr)
         }
-        _ => None
+        _ => None,
     };
 
     let value_expression = if let Some(expr_node) = children.get(children.len() - 2) {
         match expr_node {
-            ParseTreeNode::NonTerminal(node) if node.name == "expression" => convert_expression(node)?,
-            _ => return Err("Invalid value expression node in let statement".to_string())
+            ParseTreeNode::NonTerminal(node) if node.name == "expression" => {
+                convert_expression(node)?
+            }
+            _ => return Err("Invalid value expression node in let statement".to_string()),
         }
     } else {
         return Err("Invalid value expression node in let statement".to_string());
     };
 
-    Ok(Statement::Let{
+    Ok(Statement::Let {
         var_name,
         index_expression,
         value_expression,
@@ -267,11 +304,164 @@ fn convert_let_statement(let_stmt_node: &ParseTreeNodeData) -> Result<Statement,
 }
 
 fn convert_expression(expression_node: &ParseTreeNodeData) -> Result<Expression, String> {
-    // Implement conversion for expressions
-    Ok(Expression{
-        term: Box::new(Term::IntegerConstant(0)),
-        rest: vec![],
-    }) // Placeholder
+    let children = &expression_node.children;
+    let term_node = get_non_terminal_at(children, 0, "term")?;
+    let term = convert_term(term_node)?;
+    let mut rest = vec![];
+
+    if children.len() > 1 {
+        let n = children.len() / 2;
+        for i in 0..n {
+            let op_node = children
+                .get(2 * i + 1)
+                .ok_or("Missing operator node in expression")?;
+            let operator = match op_node {
+                ParseTreeNode::Terminal(token) => match token.lexeme.as_str() {
+                    "+" => Operator::Plus,
+                    "-" => Operator::Minus,
+                    "*" => Operator::Multiply,
+                    "/" => Operator::Divide,
+                    "&" => Operator::And,
+                    "|" => Operator::Or,
+                    "<" => Operator::LessThan,
+                    ">" => Operator::GreaterThan,
+                    "=" => Operator::Equal,
+                    _ => return Err("Invalid operator in expression".to_string()),
+                },
+                _ => return Err("Invalid operator node in expression".to_string()),
+            };
+
+            let next_term_node = get_non_terminal_at(children, 2 * i + 2, "term")?;
+            let next_term = convert_term(next_term_node)?;
+
+            rest.push((operator, Box::new(next_term)));
+        }
+    }
+
+    Ok(Expression {
+        term: Box::new(term),
+        rest,
+    })
+}
+
+fn convert_term(term_node: &ParseTreeNodeData) -> Result<Term, String> {
+    let children = &term_node.children;
+    let first_child = children.get(0).ok_or("Empty term node")?;
+
+    match first_child {
+        ParseTreeNode::Terminal(token) => match token.token_type.get_category() {
+            TokenTypeCategory::IntegerConstant => {
+                let value = token
+                    .lexeme
+                    .parse::<u16>()
+                    .map_err(|_| "Invalid integer constant".to_string())?;
+                Ok(Term::IntegerConstant(value))
+            }
+            TokenTypeCategory::StringConstant => {
+                let value = token.lexeme.trim_matches('"').to_string();
+                Ok(Term::StringConstant(value))
+            }
+            TokenTypeCategory::True => Ok(Term::KeywordConstant(KeywordConstant::True)),
+            TokenTypeCategory::False => Ok(Term::KeywordConstant(KeywordConstant::False)),
+            TokenTypeCategory::Null => Ok(Term::KeywordConstant(KeywordConstant::Null)),
+            TokenTypeCategory::This => Ok(Term::KeywordConstant(KeywordConstant::This)),
+            TokenTypeCategory::Identifier => convert_expression_w_identifier(children),
+            TokenTypeCategory::LParen => convert_grouped_expression(children),
+            TokenTypeCategory::Minus | TokenTypeCategory::Tilde => convert_unary_operation(term_node),
+            _ => Err("Invalid term node".to_string()),
+        },
+        _ => Err("Invalid term node".to_string()),
+    }
+}
+
+fn convert_unary_operation(term_node: &ParseTreeNodeData) -> Result<Term, String> {
+    let children = &term_node.children;
+
+    let operator_node = children.get(0).ok_or("Missing operator in unary operation")?;
+    let operator = match operator_node {
+        ParseTreeNode::Terminal(token) => match token.lexeme.as_str() {
+            "-" => UnaryOperator::Negate,
+            "~" => UnaryOperator::Not,
+            _ => return Err("Invalid unary operator".to_string()),
+        },
+        _ => return Err("Invalid operator node in unary operation".to_string()),
+    };
+
+    let term_node = get_non_terminal_at(children, 1, "term")?;
+    let term = convert_term(term_node)?;
+
+    Ok(Term::UnaryOp {
+        operator,
+        term: Box::new(term),
+    })
+}
+
+fn convert_grouped_expression(nodes: &Vec<ParseTreeNode>) -> Result<Term, String> {
+    if nodes.len() != 3 {
+        return Err("Invalid grouped expression structure".to_string());
+    }
+
+    let expr_node = match &nodes[1] {
+        ParseTreeNode::NonTerminal(node) if node.name == "expression" => node,
+        _ => return Err("Invalid expression node in grouped expression".to_string()),
+    };
+
+    let expression = convert_expression(expr_node)?;
+    Ok(Term::ExpressionInParens(Box::new(expression)))
+}
+
+fn convert_expression_w_identifier(nodes: &Vec<ParseTreeNode>) -> Result<Term, String> {
+    let first_ident = if let ParseTreeNode::Terminal(token) = &nodes[0] {
+        Term::VarName(token.lexeme.clone())
+    } else {
+        return Err("Invalid identifier term".to_string());
+    };
+
+    if nodes.len() == 1 {
+        return Ok(first_ident);
+    }
+
+    let second_node = &nodes[1];
+    match second_node {
+        ParseTreeNode::Terminal(token) => match token.token_type.get_category() {
+           TokenTypeCategory::Dot | TokenTypeCategory::LParen => {
+                let subroutine_call = convert_subroutine_call(nodes)?;
+                Ok(Term::SubroutineCall(subroutine_call))
+            }
+            _ => Err("Invalid term structure after identifier".to_string()),
+        },
+        _ => Err("Invalid term structure after identifier".to_string()),
+    }
+}
+
+fn convert_subroutine_call(
+    nodes: &Vec<ParseTreeNode>,
+) -> Result<SubroutineCall, String> {
+    let class_or_instance_name = None;
+    let subroutine_name;
+    let mut arguments = vec![];
+
+    let first = get_terminal_at(nodes, 0, TokenTypeCategory::Identifier)?;
+
+    let second = match &nodes[1] {
+        ParseTreeNode::Terminal(token) => token,
+        _ => return Err("Invalid subroutine call structure".to_string()),
+    };
+    match second.token_type.get_category() {
+        TokenTypeCategory::Dot => {
+            return Err("Not implemented yet".to_string());
+        }
+        TokenTypeCategory::LParen => {
+            subroutine_name = first.lexeme.clone();
+        }
+        _ => return Err("Invalid subroutine call structure".to_string()),
+    }
+
+    Ok(SubroutineCall {
+        class_or_instance_name,
+        subroutine_name,
+        arguments,
+    })
 }
 
 fn convert_var_declaration(var_dec_node: &ParseTreeNodeData) -> Result<VarDec, String> {
@@ -281,10 +471,7 @@ fn convert_var_declaration(var_dec_node: &ParseTreeNodeData) -> Result<VarDec, S
     let var_type = convert_type_node(type_node)?;
     let names = get_identifiers(&children[2..]);
 
-    Ok(VarDec{
-        var_type,
-        names,
-    })
+    Ok(VarDec { var_type, names })
 }
 
 fn get_identifiers(nodes: &[ParseTreeNode]) -> Vec<String> {
@@ -300,7 +487,9 @@ fn get_identifiers(nodes: &[ParseTreeNode]) -> Vec<String> {
     identifiers
 }
 
-fn convert_parameter_list(param_list_node: &ParseTreeNodeData) -> Result<Vec<(Type, String)>, String> {
+fn convert_parameter_list(
+    param_list_node: &ParseTreeNodeData,
+) -> Result<Vec<(Type, String)>, String> {
     let mut parameters = vec![];
     let children = &param_list_node.children;
     let mut i = 0;
@@ -324,14 +513,13 @@ fn convert_parameter_list(param_list_node: &ParseTreeNodeData) -> Result<Vec<(Ty
 
 #[cfg(test)]
 mod tests {
-    use crate::grammarous::StringCharStream;
-    use crate::jack::{lexer, parser};
-    use crate::jack::parse_tree_printer;
     use super::*;
+    use crate::grammarous::StringCharStream;
+    use crate::jack::parse_tree_printer;
+    use crate::jack::{lexer, parser};
 
     #[test]
     fn test_convert_parse_tree_to_ast() {
-
         let code = r#"
         class Person {
             field boolean isMarried, isMale;
@@ -375,6 +563,9 @@ mod tests {
     fn test_if_statement_conversion() {
         let code = r#"
         class Test {
+
+            static Environment env;
+
             method void testIf(boolean condition) {
                 if (condition) {
                     return;
@@ -395,11 +586,42 @@ mod tests {
         let statements = &body.statements;
 
         assert_eq!(statements.len(), 2);
-        if let Statement::If { condition: _, if_statements: _, else_statements: Some(else_stmts) } = &statements[0] {
-            assert_eq!(else_stmts.len(), 1);
+        if let Statement::If {
+            condition: _,
+            if_statements: _,
+            else_statements: Some(else_stmts),
+        } = &statements[0]
+        {
+            assert_eq!(else_stmts.len(), 2);
         } else {
             panic!("Expected an if statement with else branch");
         }
+    }
+
+    #[test]
+    fn test_expression_conversion() {
+        let code = r#"
+        class Calculator {
+            method int calcSomething(int a, int b) {
+                var int answer;
+                let answer = add(41, 1);
+                return -a + b * (a - b);
+            }
+            method int add(int x, int y) {
+                return x + y;
+            }
+        }
+        "#;
+
+        let ast = run_code_to_ast_conversion(code).expect("Failed to convert code to AST");
+
+        dbg!(&ast);
+
+        let subroutine = &ast.subroutine_declarations[0];
+        let body = &subroutine.body;
+        let statements = &body.statements;
+
+        assert_eq!(statements.len(), 2);
     }
 
     fn run_code_to_ast_conversion(code: &str) -> Result<Class, String> {
@@ -407,7 +629,9 @@ mod tests {
         let mut lexer = lexer::Lexer::new(&mut stream);
         let mut parser = parser::Parser::new(&mut lexer);
 
-        let parse_tree = parser.parse_class().map_err(|e| format!("Parsing error: {}", e))?;
+        let parse_tree = parser
+            .parse_class()
+            .map_err(|e| format!("Parsing error: {}", e))?;
         parse_tree_printer::print_parse_tree(&parse_tree);
         convert_class(&parse_tree)
     }
