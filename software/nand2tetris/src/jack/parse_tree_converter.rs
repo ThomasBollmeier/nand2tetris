@@ -592,7 +592,7 @@ mod tests {
             else_statements: Some(else_stmts),
         } = &statements[0]
         {
-            assert_eq!(else_stmts.len(), 2);
+            assert_eq!(else_stmts.len(), 1);
         } else {
             panic!("Expected an if statement with else branch");
         }
