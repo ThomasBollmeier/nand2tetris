@@ -437,9 +437,9 @@ fn convert_expression_w_identifier(nodes: &Vec<ParseTreeNode>) -> Result<Term, S
 fn convert_subroutine_call(
     nodes: &Vec<ParseTreeNode>,
 ) -> Result<SubroutineCall, String> {
-    let class_or_instance_name = None;
+    let mut class_or_instance_name = None;
     let subroutine_name;
-    let mut arguments = vec![];
+    let arguments_node;
 
     let first = get_terminal_at(nodes, 0, TokenTypeCategory::Identifier)?;
 
@@ -449,19 +449,42 @@ fn convert_subroutine_call(
     };
     match second.token_type.get_category() {
         TokenTypeCategory::Dot => {
-            return Err("Not implemented yet".to_string());
+            class_or_instance_name = Some(first.lexeme.clone());
+            let third = get_terminal_at(nodes, 2, TokenTypeCategory::Identifier)?;
+            subroutine_name = third.lexeme.clone();
+            arguments_node = get_non_terminal_at(nodes, 4, "expressionList")?;
         }
         TokenTypeCategory::LParen => {
             subroutine_name = first.lexeme.clone();
+            arguments_node = get_non_terminal_at(nodes, 2, "expressionList")?;
         }
         _ => return Err("Invalid subroutine call structure".to_string()),
     }
+
+    let arguments = convert_expression_list(arguments_node)?;
 
     Ok(SubroutineCall {
         class_or_instance_name,
         subroutine_name,
         arguments,
     })
+}
+
+fn convert_expression_list(
+    expr_list_node: &ParseTreeNodeData,
+) -> Result<Vec<Expression>, String> {
+    let children = &expr_list_node.children;
+    let mut expressions = vec![];
+
+    let mut i = 0;
+    while i < children.len() {
+        let expr_node = get_non_terminal_at(children, i, "expression")?;
+        let expression = convert_expression(expr_node)?;
+        expressions.push(expression);
+        i += 2; // Skip to next expression (skip comma)
+    }
+
+    Ok(expressions)
 }
 
 fn convert_var_declaration(var_dec_node: &ParseTreeNodeData) -> Result<VarDec, String> {
@@ -602,13 +625,23 @@ mod tests {
     fn test_expression_conversion() {
         let code = r#"
         class Calculator {
+
             method int calcSomething(int a, int b) {
                 var int answer;
                 let answer = add(41, 1);
                 return -a + b * (a - b);
             }
+
             method int add(int x, int y) {
                 return x + y;
+            }
+
+            function int factorial(int n) {
+                if (n = 0) {
+                    return 1;
+                } else {
+                    return n * Calculator.factorial(n - 1);
+                }
             }
         }
         "#;
