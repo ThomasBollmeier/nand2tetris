@@ -171,10 +171,10 @@ fn convert_statements(statements_node: &ParseTreeNodeData) -> Result<Vec<Stateme
                     statements.push(convert_if_statement(node)?);
                 }
                 "whileStatement" => {
-                    // Implement conversion for whileStatement
+                    statements.push(convert_while_statement(node)?);
                 }
                 "doStatement" => {
-                    // Implement conversion for doStatement
+                    statements.push(convert_do_statement(node)?);
                 }
                 "returnStatement" => {
                     statements.push(convert_return_statement(node)?);
@@ -185,6 +185,27 @@ fn convert_statements(statements_node: &ParseTreeNodeData) -> Result<Vec<Stateme
     }
 
     Ok(statements)
+}
+
+fn convert_do_statement(node: &ParseTreeNodeData) -> Result<Statement, String> {
+    let subroutine_call = convert_subroutine_call(&node.children[1..])?;
+
+    Ok(Statement::Do { subroutine_call })
+}
+
+fn convert_while_statement(while_stmt_node: &ParseTreeNodeData) -> Result<Statement, String> {
+    let children = &while_stmt_node.children;
+
+    let condition_node = get_non_terminal_at(children, 2, "expression")?;
+    let condition = convert_expression(condition_node)?;
+
+    let statements_node = get_non_terminal_at(children, 5, "statements")?;
+    let body_statements = convert_statements(statements_node)?;
+
+    Ok(Statement::While {
+        condition,
+        body_statements,
+    })
 }
 
 fn convert_return_statement(return_stmt_node: &ParseTreeNodeData) -> Result<Statement, String> {
@@ -435,7 +456,7 @@ fn convert_expression_w_identifier(nodes: &Vec<ParseTreeNode>) -> Result<Term, S
 }
 
 fn convert_subroutine_call(
-    nodes: &Vec<ParseTreeNode>,
+    nodes: &[ParseTreeNode],
 ) -> Result<SubroutineCall, String> {
     let mut class_or_instance_name = None;
     let subroutine_name;
@@ -618,6 +639,43 @@ mod tests {
             assert_eq!(else_stmts.len(), 1);
         } else {
             panic!("Expected an if statement with else branch");
+        }
+    }
+
+    #[test]
+    fn test_while_statement_conversion() {
+        let code = r#"
+        class Test {
+
+            method void testWhile(int n) {
+                var int i;
+                let i = 0;
+                while (i < n) {
+                    do Output.printInt(i);
+                    let i = i + 1;
+                }
+                return;
+            }
+        }
+        "#;
+
+        let ast = run_code_to_ast_conversion(code).expect("Failed to convert code to AST");
+
+        dbg!(&ast);
+
+        let subroutine = &ast.subroutine_declarations[0];
+        let body = &subroutine.body;
+        let statements = &body.statements;
+
+        assert_eq!(statements.len(), 3);
+        if let Statement::While {
+            condition: _,
+            body_statements,
+        } = &statements[1]
+        {
+            assert_eq!(body_statements.len(), 2);
+        } else {
+            panic!("Expected a while statement");
         }
     }
 
