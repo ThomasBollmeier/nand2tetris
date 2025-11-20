@@ -1,4 +1,4 @@
-use crate::jack::ast::{Expression, Operator, Term};
+use crate::jack::ast::{Class, Expression, Operator, Term};
 
 pub struct Compiler {
     vm_lines: Vec<String>,
@@ -15,7 +15,7 @@ impl Compiler {
         self.vm_lines.join("\n")
     }
 
-    pub fn compile(&mut self) {
+    pub fn compile_class(&mut self, _class: &Class) {
         self.vm_lines.clear();
     }
 
@@ -23,9 +23,7 @@ impl Compiler {
         self.compile_term(expr.term.as_ref());
         for (op, term) in &expr.rest {
             self.compile_term(term.as_ref());
-            // Here you would add VM code for the operator
             match op {
-                // Example for addition
                 Operator::Plus => {
                     self.vm_lines.push("add".to_string());
                 }
@@ -43,6 +41,15 @@ impl Compiler {
                 }
                 Operator::Or => {
                     self.vm_lines.push("or".to_string());
+                }
+                Operator::GreaterThan => {
+                    self.vm_lines.push("gt".to_string());
+                }
+                Operator::LessThan => {
+                    self.vm_lines.push("lt".to_string());
+                }
+                Operator::Equal => {
+                    self.vm_lines.push("eq".to_string());
                 }
                 _ => {
                     todo!("Operator {:?} not implemented", op);
