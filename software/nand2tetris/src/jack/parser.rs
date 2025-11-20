@@ -1,6 +1,8 @@
 use crate::grammarous::stream::{BufferedStream, Stream};
+use crate::jack::ast;
 use crate::jack::parse_tree::{ParseTreeNode, ParseTreeNodeData};
 use crate::jack::lexer::JackToken;
+use crate::jack::parse_tree_converter::convert_class;
 use crate::jack::token_type::TokenTypeCategory::{self, *};
 
 pub struct Parser<'a> {
@@ -12,6 +14,11 @@ impl<'a> Parser<'a> {
         Self {
             stream: BufferedStream::new(stream),
         }
+    }
+
+    pub fn create_class_ast(&mut self) -> Result<ast::Class, String> {
+        let parse_tree = self.parse_class()?;
+        convert_class(&parse_tree)
     }
 
     pub fn parse_class(&mut self) -> Result<ParseTreeNode, String> {
@@ -639,5 +646,37 @@ mod tests {
         ast_printer.set_output(&mut output);
 
         ast_printer.print_ast(&ast.unwrap());
+    }
+
+    #[test]
+    fn test_create_class_ast() {
+        let code = r#"
+        class Person {
+            field boolean isMarried, isMale;
+
+            method void setMarried(boolean isMarried) {
+                var int answer;
+                let answer = 41 + 1;
+
+            }
+
+            method void sayHello() {
+                do Output.printString("Hallo Welt!");
+                return;
+            }
+        }
+        "#;
+
+        let mut char_stream = StringCharStream::new(code);
+        let mut lexer = Lexer::new(&mut char_stream);
+        let mut parser = Parser::new(&mut lexer);
+
+        let class_ast = parser.create_class_ast();
+        dbg!(&class_ast);
+        assert!(
+            class_ast.is_ok(),
+            "Failed to create class AST: {:?}",
+            class_ast.err().unwrap()
+        );
     }
 }

@@ -5,6 +5,7 @@ pub mod parse_tree_printer;
 mod parser;
 mod ast;
 mod parse_tree_converter;
+mod compiler;
 mod cli;
 
 use std::path::Path;
