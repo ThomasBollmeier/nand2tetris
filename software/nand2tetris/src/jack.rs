@@ -7,6 +7,7 @@ mod ast;
 mod parse_tree_converter;
 mod compiler;
 mod cli;
+mod symbol_table;
 
 use std::path::Path;
 pub use lexer::Lexer;

@@ -47,7 +47,7 @@ impl ASTNode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, Copy, Clone)]
 pub enum Segment {
     Argument,
     Local,
