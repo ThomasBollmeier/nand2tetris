@@ -44,7 +44,7 @@ pub struct Body {
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SubroutineCategory {
     Constructor,
     Function,

@@ -16,6 +16,7 @@ pub type SymbolTableRef = Rc<RefCell<SymbolTable>>;
 pub struct SymbolTableEntry {
     pub segment: Segment,
     pub index: u16,
+    pub var_type: Type,
     pub data: SymbolTableData,
 }
 
@@ -23,8 +24,8 @@ pub struct SymbolTableEntry {
 pub enum SymbolTableData {
     ClassVar {
         category: ClassVarCategory,
-        var_type: Type,
     },
+    NoData,
 }
 
 impl SymbolTable {
@@ -62,7 +63,27 @@ impl SymbolTable {
         let entry = SymbolTableEntry {
             segment,
             index,
-            data: SymbolTableData::ClassVar { category, var_type },
+            var_type,
+            data: SymbolTableData::ClassVar { category },
+        };
+        self.entries.insert(name, entry);
+    }
+
+    pub fn add_parameter(&mut self, name: String, var_type: Type) {
+        self.add_var(Segment::Argument, name, var_type);
+    }
+
+    pub fn add_local(&mut self, name: String, var_type: Type) {
+        self.add_var(Segment::Local, name, var_type);
+    }
+
+    pub fn add_var(&mut self, segment: Segment, name: String, var_type: Type) {
+        let index = self.next_index_for_segment(segment);
+        let entry = SymbolTableEntry {
+            segment,
+            index,
+            var_type,
+            data: SymbolTableData::NoData, // Placeholder
         };
         self.entries.insert(name, entry);
     }
