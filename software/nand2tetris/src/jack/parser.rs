@@ -1,7 +1,7 @@
 use crate::grammarous::stream::{BufferedStream, Stream};
 use crate::jack::ast;
-use crate::jack::parse_tree::{ParseTreeNode, ParseTreeNodeData};
 use crate::jack::lexer::JackToken;
+use crate::jack::parse_tree::{ParseTreeNode, ParseTreeNodeData};
 use crate::jack::parse_tree_converter::convert_class;
 use crate::jack::token_type::TokenTypeCategory::{self, *};
 
@@ -42,7 +42,10 @@ impl<'a> Parser<'a> {
         Ok(ParseTreeNode::NonTerminal(class_data))
     }
 
-    fn parse_subroutine_declarations(&mut self, class_data: &mut ParseTreeNodeData) -> Result<(), String> {
+    fn parse_subroutine_declarations(
+        &mut self,
+        class_data: &mut ParseTreeNodeData,
+    ) -> Result<(), String> {
         loop {
             let next_token = self.peek();
             if next_token.is_none() {
@@ -56,6 +59,7 @@ impl<'a> Parser<'a> {
                     let mut subroutine_dec = ParseTreeNodeData::new("subroutineDec", None);
 
                     let token = self.consume_any_of(&[Constructor, Function, Method])?;
+                    let is_constructor = token.token_type.get_category() == Constructor;
                     subroutine_dec.add_token(token);
 
                     let token = self.consume_type(true)?;
@@ -72,7 +76,7 @@ impl<'a> Parser<'a> {
                     let token = self.consume(RParen)?;
                     subroutine_dec.add_token(token);
 
-                    self.parse_subroutine_body(&mut subroutine_dec)?;
+                    self.parse_subroutine_body(&mut subroutine_dec, is_constructor)?;
 
                     class_data.add_child(subroutine_dec);
                 }
@@ -83,7 +87,11 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_subroutine_body(&mut self, subroutine_dec: &mut ParseTreeNodeData) -> Result<(), String> {
+    fn parse_subroutine_body(
+        &mut self,
+        subroutine_dec: &mut ParseTreeNodeData,
+        is_constructor: bool,
+    ) -> Result<(), String> {
         let mut subroutine_body = ParseTreeNodeData::new("subroutineBody", None);
 
         let token = self.consume(LBrace)?;
@@ -91,7 +99,7 @@ impl<'a> Parser<'a> {
 
         self.parse_var_declarations(&mut subroutine_body)?;
 
-        subroutine_body.add_child(self.parse_statements()?);
+        subroutine_body.add_child(self.parse_statements(is_constructor)?);
 
         let token = self.consume(RBrace)?;
         subroutine_body.add_token(token);
@@ -101,7 +109,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_statements(&mut self) -> Result<ParseTreeNodeData, String> {
+    fn parse_statements(&mut self, is_constructor: bool) -> Result<ParseTreeNodeData, String> {
         let mut statements = ParseTreeNodeData::new("statements", None);
         loop {
             let next_token = self.peek();
@@ -120,7 +128,61 @@ impl<'a> Parser<'a> {
             statements.add_child(statement?);
         }
 
+        // A constructor must end with a return this statement
+        if is_constructor && !self.block_ends_with_return_this(&statements) {
+            return Err("Constructor must end with a 'return this' statement".to_string());
+        }
+
         Ok(statements)
+    }
+
+    fn block_ends_with_return_this(&self, statements: &ParseTreeNodeData) -> bool {
+        let last_statement = statements.children.last();
+        match last_statement {
+            Some(node) => {
+                if let ParseTreeNode::NonTerminal(data) = node {
+                    if data.name != "returnStatement" {
+                        return false;
+                    }
+                    let return_children = &data.children;
+                    if return_children.len() != 3 {
+                        // return, expression, ;
+                        return false;
+                    }
+                    let return_expr = &return_children[1];
+                    if let ParseTreeNode::NonTerminal(expr_data) = return_expr {
+                        if expr_data.name != "expression" {
+                            return false;
+                        }
+                        let expr_children = &expr_data.children;
+                        if expr_children.len() != 1 {
+                            return false;
+                        }
+                        if let ParseTreeNode::NonTerminal(term_data) = &expr_children[0] {
+                            if term_data.name != "term" {
+                                return false;
+                            }
+                            let term_children = &term_data.children;
+                            if term_children.len() != 1 {
+                                return false;
+                            }
+                            if let ParseTreeNode::Terminal(token) = &term_children[0] {
+                                token.token_type.get_category() == This
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
     }
 
     fn parse_return_statement(&mut self) -> Result<ParseTreeNodeData, String> {
@@ -177,7 +239,7 @@ impl<'a> Parser<'a> {
         let token = self.consume(LBrace)?;
         while_statement.add_token(token);
 
-        let statements = self.parse_statements()?;
+        let statements = self.parse_statements(false)?;
         while_statement.add_child(statements);
 
         let token = self.consume(RBrace)?;
@@ -204,7 +266,7 @@ impl<'a> Parser<'a> {
         let token = self.consume(LBrace)?;
         if_statement.add_token(token);
 
-        let statements = self.parse_statements()?;
+        let statements = self.parse_statements(false)?;
         if_statement.add_child(statements);
 
         let token = self.consume(RBrace)?;
@@ -219,7 +281,7 @@ impl<'a> Parser<'a> {
                 let token = self.consume(LBrace)?;
                 if_statement.add_token(token);
 
-                let statements = self.parse_statements()?;
+                let statements = self.parse_statements(false)?;
                 if_statement.add_child(statements);
 
                 let token = self.consume(RBrace)?;
@@ -274,14 +336,7 @@ impl<'a> Parser<'a> {
             let next_token = self.peek();
             if let Some(token) = next_token {
                 match token.token_type.get_category() {
-                    Plus
-                    | Minus
-                    | Asterisk
-                    | Slash
-                    | Ampersand
-                    | Pipe
-                    | LessThan
-                    | GreaterThan
+                    Plus | Minus | Asterisk | Slash | Ampersand | Pipe | LessThan | GreaterThan
                     | Equal => {
                         let token = self.consume_any()?;
                         expression.add_token(token);
@@ -429,7 +484,10 @@ impl<'a> Parser<'a> {
         Ok(expression_list)
     }
 
-    fn parse_var_declarations(&mut self, subroutine_dec: &mut ParseTreeNodeData) -> Result<(), String> {
+    fn parse_var_declarations(
+        &mut self,
+        subroutine_dec: &mut ParseTreeNodeData,
+    ) -> Result<(), String> {
         loop {
             let next_token = self.peek();
             if next_token.is_none() {
@@ -462,7 +520,10 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_parameter_list(&mut self, subroutine_dec: &mut ParseTreeNodeData) -> Result<(), String> {
+    fn parse_parameter_list(
+        &mut self,
+        subroutine_dec: &mut ParseTreeNodeData,
+    ) -> Result<(), String> {
         let mut param_list = ParseTreeNodeData::new("parameterList", None);
 
         let next_token = self.peek();
@@ -500,7 +561,10 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_class_var_declarations(&mut self, class_data: &mut ParseTreeNodeData) -> Result<(), String> {
+    fn parse_class_var_declarations(
+        &mut self,
+        class_data: &mut ParseTreeNodeData,
+    ) -> Result<(), String> {
         loop {
             let next_token = self.peek();
             if next_token.is_none() {
@@ -533,7 +597,10 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn add_comma_separated_identifiers(&mut self, data: &mut ParseTreeNodeData) -> Result<(), String> {
+    fn add_comma_separated_identifiers(
+        &mut self,
+        data: &mut ParseTreeNodeData,
+    ) -> Result<(), String> {
         let token = self.consume(Identifier)?;
         data.add_token(token);
 
@@ -607,11 +674,12 @@ mod tests {
     use super::*;
     use crate::grammarous::string_char_stream::StringCharStream;
     use crate::jack::lexer::Lexer;
-    use crate::jack::parse_tree_printer::{ParseTreePrinter, ConsoleOutput};
+    use crate::jack::parse_tree_printer::{ConsoleOutput, ParseTreePrinter};
 
     #[test]
     fn test_parse_class() {
-        run_code(r#"
+        run_code(
+            r#"
         class Person {
             field boolean isMarried, isMale;
 
@@ -626,7 +694,8 @@ mod tests {
                 return;
             }
         }
-        "#);
+        "#,
+        );
     }
 
     fn run_code(code: &str) {

@@ -81,12 +81,6 @@ impl Compiler {
         ));
 
         if subroutine_decl.category == SubroutineCategory::Constructor {
-            subroutine_symbols.borrow_mut().add_var(
-                Segment::Pointer,
-                "this".to_string(),
-                Type::Class(self.curr_class_name.clone()),
-            );
-
             self.vm_write(format!("push constant {}", num_fields));
             self.vm_write_str("call Memory.alloc 1");
             self.vm_write_str("pop pointer 0");
@@ -112,8 +106,24 @@ impl Compiler {
             }
         }
 
-        for _statement in &body.statements {
+        for statement in &body.statements {
+            self.compile_statement(statement);
+        }
+    }
 
+    fn compile_statement(&mut self, statement: &Statement) {
+        match statement {
+            Statement::Return{ value } => {
+                if let Some(expr) = value {
+                    self.compile_expression(expr);
+                } else {
+                    self.vm_write_str("push constant 0");
+                }
+                self.vm_write_str("return");
+            }
+            _ => {
+                // Placeholder for other statement types
+            }
         }
     }
 
@@ -221,10 +231,32 @@ impl Compiler {
                     }
                 }
             }
+            Term::VarName(name) => {
+                self.compile_var_name(name);
+            }
             _ => {
                 todo!("not implemented")
             }
         }
+    }
+
+    fn compile_var_name(&mut self, name: &str) {
+        let symbols = self.get_current_symbols();
+        let entry = symbols
+            .borrow()
+            .get_entry(name)
+            .expect(&format!("Variable {} not found", name));
+        let segment_str = match entry.segment {
+            Segment::Static => "static",
+            Segment::This => "this",
+            Segment::That => "that",
+            Segment::Argument => "argument",
+            Segment::Local => "local",
+            Segment::Pointer => "pointer",
+            Segment::Temp => "temp",
+            Segment::Constant => panic!("Constant segment not valid for variable access"),
+        };
+        self.vm_write(format!("push {} {}", segment_str, entry.index));
     }
 
     fn initialize_char_map() -> HashMap<char, u8> {
