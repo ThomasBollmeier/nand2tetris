@@ -1,7 +1,7 @@
 use crate::jack::ast::*;
 use crate::jack::symbol_table::{SymbolTable, SymbolTableRef};
-use std::collections::HashMap;
 use crate::vmtrans::ast::Segment;
+use std::collections::HashMap;
 
 pub struct Compiler {
     vm_lines: Vec<String>,
@@ -9,6 +9,7 @@ pub struct Compiler {
     curr_class_name: String,
     curr_symbols: Option<SymbolTableRef>,
     class_symbols: HashMap<String, SymbolTableRef>,
+    next_label_num: usize,
 }
 
 impl Compiler {
@@ -19,6 +20,7 @@ impl Compiler {
             curr_class_name: String::new(),
             curr_symbols: None,
             class_symbols: HashMap::new(),
+            next_label_num: 0,
         }
     }
 
@@ -29,6 +31,8 @@ impl Compiler {
     pub fn compile_class(&mut self, class: &Class) {
         self.vm_lines.clear();
         self.curr_class_name = class.name.clone();
+        self.next_label_num = 1;
+
         self.curr_symbols = Some(SymbolTable::new_ref(None));
         self.class_symbols.insert(
             class.name.clone(),
@@ -39,9 +43,10 @@ impl Compiler {
             self.compile_class_var_declaration(class_var_decl);
         }
 
-        let num_fields = class.class_var_declarations
+        let num_fields = class
+            .class_var_declarations
             .iter()
-            .map(|class_var_decl| { class_var_decl.names.len() })
+            .map(|class_var_decl| class_var_decl.names.len())
             .sum();
 
         for subroutine_decl in &class.subroutine_declarations {
@@ -113,7 +118,14 @@ impl Compiler {
 
     fn compile_statement(&mut self, statement: &Statement) {
         match statement {
-            Statement::Return{ value } => {
+            Statement::If {
+                condition,
+                if_statements,
+                else_statements,
+            } => {
+                self.compile_if_statement(condition, if_statements, else_statements);
+            }
+            Statement::Return { value } => {
                 if let Some(expr) = value {
                     self.compile_expression(expr);
                 } else {
@@ -125,6 +137,47 @@ impl Compiler {
                 // Placeholder for other statement types
             }
         }
+    }
+
+    fn compile_if_statement(
+        &mut self,
+        condition: &Expression,
+        if_statements: &Vec<Statement>,
+        else_statements: &Option<Vec<Statement>>,
+    ) {
+        self.compile_expression(condition);
+        self.vm_write_str("not");
+
+        match else_statements {
+            Some(else_statements) => {
+                let else_label = self.create_label();
+                let end_label = self.create_label();
+                self.vm_write(format!("if-goto {}", else_label));
+                for stmt in if_statements {
+                    self.compile_statement(stmt);
+                }
+                self.vm_write(format!("goto {}", end_label));
+                self.vm_write(format!("label {}", else_label));
+                for stmt in else_statements {
+                    self.compile_statement(stmt);
+                }
+                self.vm_write(format!("label {}", end_label));
+            }
+            None => {
+                let end_label = self.create_label();
+                self.vm_write(format!("if-goto {}", end_label));
+                for stmt in if_statements {
+                    self.compile_statement(stmt);
+                }
+                self.vm_write(format!("label {}", end_label));
+            }
+        }
+    }
+
+    fn create_label(&mut self) -> String {
+        let label = format!("l{}", self.next_label_num);
+        self.next_label_num += 1;
+        label
     }
 
     fn get_class_symbols(&self, class_name: &str) -> SymbolTableRef {
@@ -345,10 +398,12 @@ mod tests {
         class Person {
             field String name;
             field String first_name;
+            field boolean isMale;
 
-            constructor Person new(String aName, String aFirstName) {
+            constructor Person new(String aName, String aFirstName, boolean aIsMale) {
               let name = aName;
               let firstName = aFirstName;
+              let isMale = aIsMale;
               return this;
             }
 
@@ -356,9 +411,17 @@ mod tests {
               return name;
             }
 
+            method String getPrefix() {
+              if (isMale) {
+                return "Mr. ";
+              } else {
+                return "Ms. ";
+              }
+            }
+
             function void main() {
               var Person p;
-              let p = Person.new("Doe", "John");
+              let p = Person.new("Doe", "John", true);
               let name = p.getName();
               do Output.printString(name);
               return;
@@ -374,7 +437,8 @@ mod tests {
 
         print!("{vm_code}");
 
-        let expected_start = "function Person.new 0\npush constant 2\ncall Memory.alloc 1\npop pointer 0";
+        let expected_start =
+            "function Person.new 0\npush constant 3\ncall Memory.alloc 1\npop pointer 0";
         assert!(vm_code.starts_with(expected_start));
     }
 

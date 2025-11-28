@@ -1,6 +1,9 @@
 use crate::grammarous::stream::{BufferedStream, Stream};
 use crate::jack::ast;
 use crate::jack::lexer::JackToken;
+use crate::jack::parse_tree::ParseTreeAction::{
+    CheckName, CheckTokenTypeCategory, NavigateToChildByIndex,
+};
 use crate::jack::parse_tree::{ParseTreeNode, ParseTreeNodeData};
 use crate::jack::parse_tree_converter::convert_class;
 use crate::jack::token_type::TokenTypeCategory::{self, *};
@@ -59,7 +62,7 @@ impl<'a> Parser<'a> {
                     let mut subroutine_dec = ParseTreeNodeData::new("subroutineDec", None);
 
                     let token = self.consume_any_of(&[Constructor, Function, Method])?;
-                    let is_constructor = token.token_type.get_category() == Constructor;
+                    let subroutine_catg = token.token_type.get_category();
                     subroutine_dec.add_token(token);
 
                     let token = self.consume_type(true)?;
@@ -76,7 +79,7 @@ impl<'a> Parser<'a> {
                     let token = self.consume(RParen)?;
                     subroutine_dec.add_token(token);
 
-                    self.parse_subroutine_body(&mut subroutine_dec, is_constructor)?;
+                    self.parse_subroutine_body(&mut subroutine_dec, Some(subroutine_catg))?;
 
                     class_data.add_child(subroutine_dec);
                 }
@@ -90,7 +93,7 @@ impl<'a> Parser<'a> {
     fn parse_subroutine_body(
         &mut self,
         subroutine_dec: &mut ParseTreeNodeData,
-        is_constructor: bool,
+        subroutine_catg: Option<TokenTypeCategory>,
     ) -> Result<(), String> {
         let mut subroutine_body = ParseTreeNodeData::new("subroutineBody", None);
 
@@ -99,7 +102,7 @@ impl<'a> Parser<'a> {
 
         self.parse_var_declarations(&mut subroutine_body)?;
 
-        subroutine_body.add_child(self.parse_statements(is_constructor)?);
+        subroutine_body.add_child(self.parse_statements(subroutine_catg)?);
 
         let token = self.consume(RBrace)?;
         subroutine_body.add_token(token);
@@ -109,7 +112,10 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_statements(&mut self, is_constructor: bool) -> Result<ParseTreeNodeData, String> {
+    fn parse_statements(
+        &mut self,
+        subroutine_catg: Option<TokenTypeCategory>,
+    ) -> Result<ParseTreeNodeData, String> {
         let mut statements = ParseTreeNodeData::new("statements", None);
         loop {
             let next_token = self.peek();
@@ -128,58 +134,62 @@ impl<'a> Parser<'a> {
             statements.add_child(statement?);
         }
 
-        // A constructor must end with a return this statement
-        if is_constructor && !self.block_ends_with_return_this(&statements) {
-            return Err("Constructor must end with a 'return this' statement".to_string());
+        match subroutine_catg {
+            Some(Constructor) => {
+                // A constructor must end with a return this statement
+                if !self.block_ends_with_return_this(&statements) {
+                    return Err("Constructor must end with a 'return this' statement".to_string());
+                }
+            }
+            Some(_) => {
+                /*
+                if !self.block_ends_with_return(&statements) {
+                    return Err(
+                        "Functions or methods must end with a 'return' statement".to_string()
+                    );
+                }
+               */
+            }
+            _ => {}
         }
 
         Ok(statements)
+    }
+
+    fn _block_ends_with_return(&self, statements: &ParseTreeNodeData) -> bool {
+        let last_statement = statements.children.last();
+        match last_statement {
+            Some(node) => node
+                .apply_action(&CheckName {
+                    name: "returnStatement".to_string(),
+                })
+                .is_some(),
+            None => false,
+        }
     }
 
     fn block_ends_with_return_this(&self, statements: &ParseTreeNodeData) -> bool {
         let last_statement = statements.children.last();
         match last_statement {
             Some(node) => {
-                if let ParseTreeNode::NonTerminal(data) = node {
-                    if data.name != "returnStatement" {
-                        return false;
-                    }
-                    let return_children = &data.children;
-                    if return_children.len() != 3 {
-                        // return, expression, ;
-                        return false;
-                    }
-                    let return_expr = &return_children[1];
-                    if let ParseTreeNode::NonTerminal(expr_data) = return_expr {
-                        if expr_data.name != "expression" {
-                            return false;
-                        }
-                        let expr_children = &expr_data.children;
-                        if expr_children.len() != 1 {
-                            return false;
-                        }
-                        if let ParseTreeNode::NonTerminal(term_data) = &expr_children[0] {
-                            if term_data.name != "term" {
-                                return false;
-                            }
-                            let term_children = &term_data.children;
-                            if term_children.len() != 1 {
-                                return false;
-                            }
-                            if let ParseTreeNode::Terminal(token) = &term_children[0] {
-                                token.token_type.get_category() == This
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+                let actions = [
+                    CheckName {
+                        name: "returnStatement".to_string(),
+                    },
+                    NavigateToChildByIndex { index: 1 },
+                    CheckName {
+                        name: "expression".to_string(),
+                    },
+                    NavigateToChildByIndex { index: 0 },
+                    CheckName {
+                        name: "term".to_string(),
+                    },
+                    NavigateToChildByIndex { index: 0 },
+                    CheckTokenTypeCategory {
+                        token_type_category: This,
+                    },
+                ];
+                node.apply_actions(&actions).is_some()
             }
             None => false,
         }
@@ -239,7 +249,7 @@ impl<'a> Parser<'a> {
         let token = self.consume(LBrace)?;
         while_statement.add_token(token);
 
-        let statements = self.parse_statements(false)?;
+        let statements = self.parse_statements(None)?;
         while_statement.add_child(statements);
 
         let token = self.consume(RBrace)?;
@@ -266,7 +276,7 @@ impl<'a> Parser<'a> {
         let token = self.consume(LBrace)?;
         if_statement.add_token(token);
 
-        let statements = self.parse_statements(false)?;
+        let statements = self.parse_statements(None)?;
         if_statement.add_child(statements);
 
         let token = self.consume(RBrace)?;
@@ -281,7 +291,7 @@ impl<'a> Parser<'a> {
                 let token = self.consume(LBrace)?;
                 if_statement.add_token(token);
 
-                let statements = self.parse_statements(false)?;
+                let statements = self.parse_statements(None)?;
                 if_statement.add_child(statements);
 
                 let token = self.consume(RBrace)?;
@@ -686,7 +696,15 @@ mod tests {
             method void setMarried(boolean isMarried) {
                 var int answer;
                 let answer = 41 + 1;
+                return;
+            }
 
+            method String getPrefix() {
+                if (isMale) {
+                    return "Mr.";
+                } else {
+                    return "Ms.";
+                }
             }
 
             method void sayHello() {
@@ -726,7 +744,7 @@ mod tests {
             method void setMarried(boolean isMarried) {
                 var int answer;
                 let answer = 41 + 1;
-
+                return;
             }
 
             method void sayHello() {
