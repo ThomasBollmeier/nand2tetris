@@ -10,6 +10,7 @@ pub struct Compiler {
     curr_symbols: Option<SymbolTableRef>,
     class_symbols: HashMap<String, SymbolTableRef>,
     next_label_num: usize,
+    curr_subroutine_category: Option<SubroutineCategory>,
 }
 
 impl Compiler {
@@ -21,6 +22,7 @@ impl Compiler {
             curr_symbols: None,
             class_symbols: HashMap::new(),
             next_label_num: 0,
+            curr_subroutine_category: None,
         }
     }
 
@@ -59,6 +61,7 @@ impl Compiler {
     fn compile_subroutine(&mut self, subroutine_decl: &SubroutineDec, num_fields: usize) {
         let subroutine_symbols = SymbolTable::new_ref(Some(self.get_current_symbols()));
         self.curr_symbols = Some(subroutine_symbols.clone());
+        self.curr_subroutine_category = Some(subroutine_decl.category.clone());
 
         if subroutine_decl.category == SubroutineCategory::Method {
             subroutine_symbols.borrow_mut().add_parameter(
@@ -98,6 +101,7 @@ impl Compiler {
             .get_parent()
             .expect("subroutine parent not found");
         self.curr_symbols = Some(parent);
+        self.curr_subroutine_category = None;
     }
 
     fn compile_subroutine_body(&mut self, body: &Body) {
@@ -124,6 +128,10 @@ impl Compiler {
                 else_statements,
             } => {
                 self.compile_if_statement(condition, if_statements, else_statements);
+            }
+            Statement::Do { subroutine_call } => {
+                self.compile_call(subroutine_call);
+                self.vm_write_str("pop temp 0");
             }
             Statement::Return { value } => {
                 if let Some(expr) = value {
@@ -287,10 +295,63 @@ impl Compiler {
             Term::VarName(name) => {
                 self.compile_var_name(name);
             }
+            Term::SubroutineCall(call) => {
+                self.compile_call(call);
+            }
             _ => {
                 todo!("not implemented")
             }
         }
+    }
+
+    fn compile_call(&mut self, call: &SubroutineCall) {
+        let mut is_method_call = false;
+
+        match &call.class_or_instance_name {
+            Some(name) => {
+                let symbols = self.get_current_symbols();
+                if let Some(_) = symbols.borrow().get_entry(&name) {
+                    // It's an instance method call
+                    is_method_call = true;
+                    self.compile_var_name(&name);
+                }
+            }
+            None => {
+                // Method call on 'this'
+                is_method_call = true;
+                self.vm_write_str("push pointer 0");
+            }
+        }
+
+        for arg in &call.arguments {
+            self.compile_expression(arg);
+        }
+
+        let full_name = match &call.class_or_instance_name {
+            Some(name) => {
+                if !is_method_call {
+                    // It's a class method call
+                    format!("{}.{}", name, call.subroutine_name)
+                } else {
+                    // It's an instance method call
+                    let symbols = self.get_current_symbols();
+                    let entry = symbols
+                        .borrow()
+                        .get_entry(name)
+                        .expect(&format!("Variable {} not found", name));
+                    match &entry.var_type {
+                        Type::Class(class_name) => {
+                            format!("{}.{}", class_name, call.subroutine_name)
+                        }
+                        _ => panic!("Expected class type for instance method call"),
+                    }
+                }
+            }
+            None => format!("{}.{}", self.curr_class_name, call.subroutine_name),
+        };
+        let num_args = call.arguments.len() + if is_method_call { 1 } else { 0 };
+
+        self.vm_write(format!("call {} {}", full_name, num_args));
     }
 
     fn compile_var_name(&mut self, name: &str) {
@@ -298,10 +359,13 @@ impl Compiler {
         let entry = symbols
             .borrow()
             .get_entry(name)
-            .expect(&format!("Variable {} not found", name));
+            .expect(&format!("Variable {name} not found"));
         let segment_str = match entry.segment {
             Segment::Static => "static",
-            Segment::This => "this",
+            Segment::This => match self.curr_subroutine_category {
+                Some(SubroutineCategory::Method) | Some(SubroutineCategory::Constructor) => "this",
+                _ => panic!("Cannot access field '{name}' in function"),
+            },
             Segment::That => "that",
             Segment::Argument => "argument",
             Segment::Local => "local",
@@ -421,6 +485,7 @@ mod tests {
 
             function void main() {
               var Person p;
+              var String name;
               let p = Person.new("Doe", "John", true);
               let name = p.getName();
               do Output.printString(name);
