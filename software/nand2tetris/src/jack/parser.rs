@@ -137,18 +137,24 @@ impl<'a> Parser<'a> {
         match subroutine_catg {
             Some(Constructor) => {
                 // A constructor must end with a return this statement
-                if !self.block_ends_with_return_this(&statements) {
+                let tail_statements = self.find_tail_statements(&statements);
+                if tail_statements
+                    .iter()
+                    .any(|stmt| !self.is_return_stmt_with_this(stmt))
+                {
                     return Err("Constructor must end with a 'return this' statement".to_string());
                 }
             }
             Some(_) => {
-                /*
-                if !self.block_ends_with_return(&statements) {
+                let tail_statements = self.find_tail_statements(&statements);
+                if tail_statements
+                    .iter()
+                    .any(|stmt| !self.is_return_statement(stmt))
+                {
                     return Err(
                         "Functions or methods must end with a 'return' statement".to_string()
                     );
                 }
-               */
             }
             _ => {}
         }
@@ -156,43 +162,98 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
-    fn _block_ends_with_return(&self, statements: &ParseTreeNodeData) -> bool {
+    fn find_tail_statements<'b>(
+        &self,
+        statements: &'b ParseTreeNodeData,
+    ) -> Vec<&'b ParseTreeNodeData> {
         let last_statement = statements.children.last();
-        match last_statement {
-            Some(node) => node
-                .apply_action(&CheckName {
-                    name: "returnStatement".to_string(),
-                })
-                .is_some(),
-            None => false,
+        if last_statement.is_none() {
+            return vec![];
+        }
+        let last_statement = last_statement.unwrap();
+        if let Some(if_statement) = last_statement.apply_action(&CheckName {
+            name: "ifStatement".to_string(),
+        }) {
+            let mut tail_statements = Vec::new();
+            // The ifStatement has the following structure:
+            // ifStatement
+            //  - 'if' token
+            //  - '(' token
+            //  - expression
+            //  - ')' token
+            //  - '{' token
+            //  - statements (if block)
+            //  - '}' token
+            //  - optional 'else' token
+            //  - optional '{' token
+            //  - optional statements (else block)
+            //  - optional '}' token
+
+            // Get the if block statements
+            let if_block_statements = if_statement
+                .apply_action(&NavigateToChildByIndex { index: 5 })
+                .and_then(|node| match node {
+                    ParseTreeNode::NonTerminal(data) => Some(data),
+                    _ => None,
+                });
+
+            if let Some(if_block) = if_block_statements {
+                tail_statements.extend(self.find_tail_statements(if_block));
+            }
+
+            // Check for else block
+            if let Some(_) = if_statement.apply_actions(&[
+                NavigateToChildByIndex { index: 7 },
+                CheckTokenTypeCategory {
+                    token_type_category: Else,
+                },
+            ]) {
+                let else_block_statements = if_statement
+                    .apply_action(&NavigateToChildByIndex { index: 9 })
+                    .and_then(|node| match node {
+                        ParseTreeNode::NonTerminal(data) => Some(data),
+                        _ => None,
+                    });
+                if let Some(else_block) = else_block_statements {
+                    tail_statements.extend(self.find_tail_statements(else_block));
+                }
+            }
+
+            tail_statements
+        } else {
+            match last_statement {
+                ParseTreeNode::NonTerminal(data) => vec![data],
+                _ => vec![],
+            }
         }
     }
 
-    fn block_ends_with_return_this(&self, statements: &ParseTreeNodeData) -> bool {
-        let last_statement = statements.children.last();
-        match last_statement {
-            Some(node) => {
-                let actions = [
-                    CheckName {
-                        name: "returnStatement".to_string(),
-                    },
-                    NavigateToChildByIndex { index: 1 },
-                    CheckName {
-                        name: "expression".to_string(),
-                    },
-                    NavigateToChildByIndex { index: 0 },
-                    CheckName {
-                        name: "term".to_string(),
-                    },
-                    NavigateToChildByIndex { index: 0 },
-                    CheckTokenTypeCategory {
-                        token_type_category: This,
-                    },
-                ];
-                node.apply_actions(&actions).is_some()
-            }
-            None => false,
+    fn is_return_statement(&self, statement: &ParseTreeNodeData) -> bool {
+        statement.name == "returnStatement"
+    }
+
+    fn is_return_stmt_with_this(&self, statement: &ParseTreeNodeData) -> bool {
+        if statement.name != "returnStatement" {
+            return false;
         }
+        // A returnStatement has the following structure:
+        // returnStatement
+        //  - 'return' token
+        //  - optional expression
+        //  - ';' token
+        if statement.children.len() != 3 {
+            return false; // No expression
+        }
+        let expr = &statement.children[1];
+
+        expr.apply_actions(&[
+            NavigateToChildByIndex { index: 0 },
+            CheckName { name: "term".to_string() },
+            NavigateToChildByIndex { index: 0 },
+            CheckTokenTypeCategory {
+                token_type_category: This,
+            },
+        ]).is_some()
     }
 
     fn parse_return_statement(&mut self) -> Result<ParseTreeNodeData, String> {

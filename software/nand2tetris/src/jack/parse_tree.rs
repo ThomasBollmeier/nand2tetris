@@ -42,7 +42,7 @@ impl ParseTreeNode {
                             None
                         }
                     },
-                    ParseTreeNode::Terminal(token) => None,
+                    ParseTreeNode::Terminal(_) => None,
                 }
             },
             ParseTreeAction::CheckTokenTypeCategory{token_type_category} => {
@@ -67,7 +67,7 @@ impl ParseTreeNode {
                                         return Some(child);
                                     }
                                 },
-                                ParseTreeNode::Terminal(token) => { },
+                                ParseTreeNode::Terminal(_) => { },
                             }
                         }
                         None
@@ -83,6 +83,14 @@ impl ParseTreeNode {
                     _ => None,
                 }
             },
+            ParseTreeAction::NavigateToLastChild => {
+                match self {
+                    ParseTreeNode::NonTerminal(data) => {
+                        data.children.last()
+                    },
+                    _ => None,
+                }
+            }
         }
     }
 
@@ -103,6 +111,7 @@ pub enum ParseTreeAction {
     CheckTokenTypeCategory{token_type_category: TokenTypeCategory},
     NavigateToChildByName{name: String},
     NavigateToChildByIndex{index: usize},
+    NavigateToLastChild,
 }
 
 
