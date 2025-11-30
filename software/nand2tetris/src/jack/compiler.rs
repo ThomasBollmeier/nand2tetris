@@ -136,6 +136,12 @@ impl Compiler {
             } => {
                 self.compile_if_statement(condition, if_statements, else_statements);
             }
+            Statement::While {
+                condition,
+                body_statements,
+            } => {
+                self.compile_while_statement(condition, body_statements);
+            }
             Statement::Do { subroutine_call } => {
                 self.compile_call(subroutine_call);
                 self.vm_write_str("pop temp 0");
@@ -152,6 +158,21 @@ impl Compiler {
                 // Placeholder for other statement types
             }
         }
+    }
+
+    fn compile_while_statement(&mut self, condition: &Expression, body_statements: &[Statement]) {
+        let start_label = self.create_label();
+        let end_label = self.create_label();
+
+        self.vm_write(format!("label {}", start_label));
+        self.compile_expression(condition);
+        self.vm_write_str("not");
+        self.vm_write(format!("if-goto {}", end_label));
+        for stmt in body_statements {
+            self.compile_statement(stmt);
+        }
+        self.vm_write(format!("goto {}", start_label));
+        self.vm_write(format!("label {}", end_label));
     }
 
     fn compile_let_statement(
@@ -309,11 +330,14 @@ impl Compiler {
                 KeywordConstant::This => {
                     self.vm_write_str("push pointer 0");
                 }
-            }
+            },
             Term::VarName(name) => {
                 self.compile_var_name(name);
             }
-            Term::VarNameWithIndex {var_name, index_expression} => {
+            Term::VarNameWithIndex {
+                var_name,
+                index_expression,
+            } => {
                 self.compile_var_name_with_index(var_name, index_expression);
             }
             Term::ExpressionInParens(expr) => {
@@ -403,7 +427,9 @@ impl Compiler {
         let segment_str = match entry.segment {
             Segment::Static => "static".to_string(),
             Segment::This => match self.curr_subroutine_category {
-                Some(SubroutineCategory::Method) | Some(SubroutineCategory::Constructor) => "this".to_string(),
+                Some(SubroutineCategory::Method) | Some(SubroutineCategory::Constructor) => {
+                    "this".to_string()
+                }
                 _ => panic!("Cannot access field '{name}' in function"),
             },
             Segment::That => "that".to_string(),
@@ -590,10 +616,55 @@ mod tests {
             "pop that 0",
             "push constant 0",
             "return",
-        ].join("\n");
+        ]
+        .join("\n");
 
         assert!(vm_code.contains(&expected_code));
     }
+
+    #[test]
+    fn test_compile_while_statement() {
+        let code = r#"
+        class Test {
+            function void countDown(int n) {
+                var int i;
+                let i = n;
+                while (i > 0) {
+                    do Output.printInt(i);
+                    let i = i - 1;
+                }
+                return;
+            }
+        }
+        "#;
+        let class = parse_class(code);
+        let mut compiler = Compiler::new();
+        compiler.compile_class(&class);
+
+        let vm_code = compiler.get_vm_code();
+        
+        let expected_code = vec![
+            "label l1",
+            "push local 0",
+            "push constant 0",
+            "gt",
+            "not",
+            "if-goto l2",
+            "push local 0",
+            "call Output.printInt 1",
+            "pop temp 0",
+            "push local 0",
+            "push constant 1",
+            "sub",
+            "pop local 0",
+            "goto l1",
+            "label l2",
+        ]
+        .join("\n");
+
+        assert!(vm_code.contains(&expected_code));
+    }
+
 
     fn parse_class(code: &str) -> Class {
         let mut stream = StringCharStream::new(code);
