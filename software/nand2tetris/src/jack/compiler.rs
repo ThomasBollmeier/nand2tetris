@@ -122,6 +122,13 @@ impl Compiler {
 
     fn compile_statement(&mut self, statement: &Statement) {
         match statement {
+            Statement::Let {
+                var_name,
+                index_expression,
+                value_expression,
+            } => {
+                self.compile_let_statement(var_name, index_expression, value_expression);
+            }
             Statement::If {
                 condition,
                 if_statements,
@@ -143,6 +150,31 @@ impl Compiler {
             }
             _ => {
                 // Placeholder for other statement types
+            }
+        }
+    }
+
+    fn compile_let_statement(
+        &mut self,
+        var_name: &str,
+        index_expression: &Option<Expression>,
+        value_expression: &Expression,
+    ) {
+        match index_expression {
+            Some(index_expr) => {
+                self.compile_var_name(var_name);
+                self.compile_expression(index_expr);
+                self.vm_write_str("add");
+                self.compile_expression(value_expression);
+                self.vm_write_str("pop temp 0");
+                self.vm_write_str("pop pointer 1");
+                self.vm_write_str("push temp 0");
+                self.vm_write_str("pop that 0");
+            }
+            None => {
+                self.compile_expression(value_expression);
+                let (segment_str, index) = self.get_segment_and_index(var_name);
+                self.vm_write(format!("pop {} {}", segment_str, index));
             }
         }
     }
@@ -277,7 +309,13 @@ impl Compiler {
                 KeywordConstant::This => {
                     self.vm_write_str("push pointer 0");
                 }
-            },
+            }
+            Term::VarName(name) => {
+                self.compile_var_name(name);
+            }
+            Term::VarNameWithIndex {var_name, index_expression} => {
+                self.compile_var_name_with_index(var_name, index_expression);
+            }
             Term::ExpressionInParens(expr) => {
                 self.compile_expression(expr);
             }
@@ -291,9 +329,6 @@ impl Compiler {
                         self.vm_write_str("not");
                     }
                 }
-            }
-            Term::VarName(name) => {
-                self.compile_var_name(name);
             }
             Term::SubroutineCall(call) => {
                 self.compile_call(call);
@@ -355,25 +390,38 @@ impl Compiler {
     }
 
     fn compile_var_name(&mut self, name: &str) {
+        let (segment_str, index) = self.get_segment_and_index(name);
+        self.vm_write(format!("push {} {}", segment_str, index));
+    }
+
+    fn get_segment_and_index(&mut self, name: &str) -> (String, u16) {
         let symbols = self.get_current_symbols();
         let entry = symbols
             .borrow()
             .get_entry(name)
             .expect(&format!("Variable {name} not found"));
         let segment_str = match entry.segment {
-            Segment::Static => "static",
+            Segment::Static => "static".to_string(),
             Segment::This => match self.curr_subroutine_category {
-                Some(SubroutineCategory::Method) | Some(SubroutineCategory::Constructor) => "this",
+                Some(SubroutineCategory::Method) | Some(SubroutineCategory::Constructor) => "this".to_string(),
                 _ => panic!("Cannot access field '{name}' in function"),
             },
-            Segment::That => "that",
-            Segment::Argument => "argument",
-            Segment::Local => "local",
-            Segment::Pointer => "pointer",
-            Segment::Temp => "temp",
+            Segment::That => "that".to_string(),
+            Segment::Argument => "argument".to_string(),
+            Segment::Local => "local".to_string(),
+            Segment::Pointer => "pointer".to_string(),
+            Segment::Temp => "temp".to_string(),
             Segment::Constant => panic!("Constant segment not valid for variable access"),
         };
-        self.vm_write(format!("push {} {}", segment_str, entry.index));
+        (segment_str, entry.index)
+    }
+
+    fn compile_var_name_with_index(&mut self, var_name: &str, index_expression: &Expression) {
+        self.compile_var_name(&var_name);
+        self.compile_expression(index_expression);
+        self.vm_write_str("add");
+        self.vm_write_str("pop pointer 1");
+        self.vm_write_str("push that 0");
     }
 
     fn initialize_char_map() -> HashMap<char, u8> {
@@ -461,7 +509,7 @@ mod tests {
         let code = r#"
         class Person {
             field String name;
-            field String first_name;
+            field String firstName;
             field boolean isMale;
 
             constructor Person new(String aName, String aFirstName, boolean aIsMale) {
@@ -505,6 +553,46 @@ mod tests {
         let expected_start =
             "function Person.new 0\npush constant 3\ncall Memory.alloc 1\npop pointer 0";
         assert!(vm_code.starts_with(expected_start));
+    }
+
+    #[test]
+    fn test_compile_let_statement_with_index() {
+        let code = r#"
+        class Test {
+            field Array arr;
+
+            constructor Test new() {
+                let arr = Array.new(10);
+                return this;
+            }
+
+            method void setValue(int index, int value) {
+                let arr[index] = value;
+                return;
+            }
+        }
+        "#;
+        let class = parse_class(code);
+        let mut compiler = Compiler::new();
+        compiler.compile_class(&class);
+
+        let vm_code = compiler.get_vm_code();
+
+        let expected_code = vec![
+            "function Test.setValue 0",
+            "push this 0",
+            "push argument 1",
+            "add",
+            "push argument 2",
+            "pop temp 0",
+            "pop pointer 1",
+            "push temp 0",
+            "pop that 0",
+            "push constant 0",
+            "return",
+        ].join("\n");
+
+        assert!(vm_code.contains(&expected_code));
     }
 
     fn parse_class(code: &str) -> Class {
