@@ -224,6 +224,8 @@ fn convert_return_statement(return_stmt_node: &ParseTreeNodeData) -> Result<Stat
 }
 
 fn convert_if_statement(if_stmt_node: &ParseTreeNodeData) -> Result<Statement, String> {
+    // 0  1 2         3 4 5             6 7    8 9               10
+    // if ( condition ) { if_statements } else { else_statements }
     let children = &if_stmt_node.children;
 
     let condition_node = get_non_terminal_at(children, 2, "expression")?;
@@ -233,7 +235,7 @@ fn convert_if_statement(if_stmt_node: &ParseTreeNodeData) -> Result<Statement, S
     let if_statements = convert_statements(statements_node)?;
     let mut else_statements = None;
 
-    if children.len() > 6 {
+    if children.len() > 7 {
         let else_statements_node = get_non_terminal_at(children, 9, "statements")?;
         else_statements = Some(convert_statements(else_statements_node)?);
     }
@@ -449,10 +451,33 @@ fn convert_expression_w_identifier(nodes: &Vec<ParseTreeNode>) -> Result<Term, S
                 let subroutine_call = convert_subroutine_call(nodes)?;
                 Ok(Term::SubroutineCall(subroutine_call))
             }
+            TokenTypeCategory::LBracket => {
+                convert_array_access(nodes)
+            }
             _ => Err("Invalid term structure after identifier".to_string()),
         },
         _ => Err("Invalid term structure after identifier".to_string()),
     }
+}
+
+fn convert_array_access(
+    nodes: &[ParseTreeNode],
+) -> Result<Term, String> {
+    // nodes
+    // 0          1   2           3
+    // identifier '[' expression ']'
+    let var_name = if let ParseTreeNode::Terminal(token) = &nodes[0] {
+        token.lexeme.clone()
+    } else {
+        return Err("Invalid identifier in array access".to_string());
+    };
+    let expr_node = get_non_terminal_at(nodes, 2, "expression")?;
+    let index_expression = convert_expression(expr_node)?;
+
+    Ok(Term::VarNameWithIndex {
+        var_name,
+        index_expression: Box::new(index_expression),
+    })
 }
 
 fn convert_subroutine_call(
@@ -640,6 +665,28 @@ mod tests {
         } else {
             panic!("Expected an if statement with else branch");
         }
+    }
+
+    #[test]
+    fn test_grouped_expression_conversion() {
+        let code = r#"
+        class Test {
+
+            field int x, y;
+            field int size;
+
+            method void incSize() {
+                if (((y + size) < 254) & ((x + size) < 510)) {
+                    let size = size + 2;
+                }
+                return;
+            }
+        }
+        "#;
+
+        let ast = run_code_to_ast_conversion(code).expect("Failed to convert code to AST");
+
+        dbg!(&ast);
     }
 
     #[test]

@@ -1,9 +1,8 @@
 use clap::Parser;
-use nand2tetris::jack::{self, AnalyzerCli};
-
+use nand2tetris::jack::{self, CompilerCli};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = AnalyzerCli::parse();
+    let config = CompilerCli::parse();
     let jack_files = jack::get_jack_files(&config.source);
 
     let output_dir = match &config.output_dir {
@@ -12,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     for file in jack_files {
-        jack::analyze_file(&file, output_dir)?;
+        jack::compile_file(&file, output_dir)?;
     }
 
     Ok(())
