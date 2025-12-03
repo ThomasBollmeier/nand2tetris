@@ -17,15 +17,6 @@ pub struct SymbolTableEntry {
     pub segment: Segment,
     pub index: u16,
     pub var_type: Type,
-    pub data: SymbolTableData,
-}
-
-#[derive(Debug, Clone)]
-pub enum SymbolTableData {
-    ClassVar {
-        category: ClassVarCategory,
-    },
-    NoData,
 }
 
 impl SymbolTable {
@@ -64,7 +55,6 @@ impl SymbolTable {
             segment,
             index,
             var_type,
-            data: SymbolTableData::ClassVar { category },
         };
         self.entries.insert(name, entry);
     }
@@ -83,7 +73,6 @@ impl SymbolTable {
             segment,
             index,
             var_type,
-            data: SymbolTableData::NoData, // Placeholder
         };
         self.entries.insert(name, entry);
     }

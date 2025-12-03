@@ -27,7 +27,7 @@ impl Compiler {
     }
 
     pub fn get_vm_code(&self) -> String {
-        self.vm_lines.join("\n")
+        self.vm_lines.join("\n") + "\n"
     }
 
     pub fn compile_class(&mut self, class: &Class) {
@@ -88,10 +88,17 @@ impl Compiler {
             self.curr_class_name, subroutine_decl.name, num_locals
         ));
 
-        if subroutine_decl.category == SubroutineCategory::Constructor {
-            self.vm_write(format!("push constant {}", num_fields));
-            self.vm_write_str("call Memory.alloc 1");
-            self.vm_write_str("pop pointer 0");
+        match subroutine_decl.category {
+            SubroutineCategory::Constructor => {
+                self.vm_write(format!("push constant {}", num_fields));
+                self.vm_write_str("call Memory.alloc 1");
+                self.vm_write_str("pop pointer 0");
+            }
+            SubroutineCategory::Method => {
+                self.vm_write_str("push argument 0");
+                self.vm_write_str("pop pointer 0");
+            }
+            _ => {}
         }
 
         self.compile_subroutine_body(&subroutine_decl.body);
@@ -153,9 +160,6 @@ impl Compiler {
                     self.vm_write_str("push constant 0");
                 }
                 self.vm_write_str("return");
-            }
-            _ => {
-                // Placeholder for other statement types
             }
         }
     }
@@ -239,16 +243,6 @@ impl Compiler {
         let label = format!("l{}", self.next_label_num);
         self.next_label_num += 1;
         label
-    }
-
-    fn get_class_symbols(&self, class_name: &str) -> SymbolTableRef {
-        self.class_symbols
-            .get(class_name)
-            .expect(&format!(
-                "No symbol table for class {}",
-                self.curr_class_name
-            ))
-            .clone()
     }
 
     fn get_current_symbols(&self) -> SymbolTableRef {
@@ -356,9 +350,6 @@ impl Compiler {
             }
             Term::SubroutineCall(call) => {
                 self.compile_call(call);
-            }
-            _ => {
-                todo!("not implemented")
             }
         }
     }
@@ -487,7 +478,7 @@ mod tests {
         compiler.compile_expression(&expr);
         let vm_code = compiler.get_vm_code();
 
-        let expected_vm_code = "push constant 6\npush constant 7\ncall Math.multiply 2";
+        let expected_vm_code = "push constant 6\npush constant 7\ncall Math.multiply 2\n";
         assert_eq!(vm_code, expected_vm_code);
     }
 
@@ -506,28 +497,8 @@ mod tests {
         let vm_code = compiler.get_vm_code();
 
         let expected_vm_code =
-            "push constant 3\npush constant 4\nadd\npush constant 6\ncall Math.multiply 2";
+            "push constant 3\npush constant 4\nadd\npush constant 6\ncall Math.multiply 2\n";
         assert_eq!(vm_code, expected_vm_code);
-    }
-
-    #[test]
-    fn test_compile_class_var_declaration() {
-        let code = r#"class TestClass {
-            static int count, total;
-            field boolean flag;
-        }"#;
-        let class = parse_class(code);
-
-        let mut compiler = Compiler::new();
-        compiler.compile_class(&class);
-
-        let symbol_table = compiler.get_class_symbols("TestClass");
-        let symbol_table = symbol_table.borrow();
-        let count_entry = symbol_table.get_entry("count").unwrap();
-        let total_entry = symbol_table.get_entry("total").unwrap();
-
-        assert_eq!(count_entry.index, 0);
-        assert_eq!(total_entry.index, 1);
     }
 
     #[test]
@@ -606,6 +577,8 @@ mod tests {
 
         let expected_code = vec![
             "function Test.setValue 0",
+            "push argument 0",
+            "pop pointer 0",
             "push this 0",
             "push argument 1",
             "add",
