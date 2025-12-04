@@ -9,7 +9,7 @@ pub struct Compiler {
     curr_class_name: String,
     curr_symbols: Option<SymbolTableRef>,
     class_symbols: HashMap<String, SymbolTableRef>,
-    next_label_num: usize,
+    next_label_num: HashMap<String, usize>,
     curr_subroutine_category: Option<SubroutineCategory>,
 }
 
@@ -21,7 +21,7 @@ impl Compiler {
             curr_class_name: String::new(),
             curr_symbols: None,
             class_symbols: HashMap::new(),
-            next_label_num: 0,
+            next_label_num: HashMap::new(),
             curr_subroutine_category: None,
         }
     }
@@ -33,7 +33,7 @@ impl Compiler {
     pub fn compile_class(&mut self, class: &Class) {
         self.vm_lines.clear();
         self.curr_class_name = class.name.clone();
-        self.next_label_num = 1;
+        self.next_label_num.clear();
 
         self.curr_symbols = Some(SymbolTable::new_ref(None));
         self.class_symbols.insert(
@@ -103,6 +103,8 @@ impl Compiler {
 
         self.compile_subroutine_body(&subroutine_decl.body);
 
+        self.vm_write_str("");
+
         let parent = subroutine_symbols
             .borrow_mut()
             .get_parent()
@@ -165,8 +167,8 @@ impl Compiler {
     }
 
     fn compile_while_statement(&mut self, condition: &Expression, body_statements: &[Statement]) {
-        let start_label = self.create_label();
-        let end_label = self.create_label();
+        let start_label = self.create_label("while");
+        let end_label = self.create_label("while");
 
         self.vm_write(format!("label {}", start_label));
         self.compile_expression(condition);
@@ -215,8 +217,8 @@ impl Compiler {
 
         match else_statements {
             Some(else_statements) => {
-                let else_label = self.create_label();
-                let end_label = self.create_label();
+                let else_label = self.create_label("if");
+                let end_label = self.create_label("if");
                 self.vm_write(format!("if-goto {}", else_label));
                 for stmt in if_statements {
                     self.compile_statement(stmt);
@@ -229,7 +231,7 @@ impl Compiler {
                 self.vm_write(format!("label {}", end_label));
             }
             None => {
-                let end_label = self.create_label();
+                let end_label = self.create_label("if");
                 self.vm_write(format!("if-goto {}", end_label));
                 for stmt in if_statements {
                     self.compile_statement(stmt);
@@ -239,9 +241,10 @@ impl Compiler {
         }
     }
 
-    fn create_label(&mut self) -> String {
-        let label = format!("l{}", self.next_label_num);
-        self.next_label_num += 1;
+    fn create_label(&mut self, prefix: &str) -> String {
+        let next_num = self.next_label_num.entry(prefix.to_string()).or_insert(1);
+        let label = format!("{}_{}", prefix.to_uppercase(), next_num);
+        *next_num += 1;
         label
     }
 
@@ -617,12 +620,12 @@ mod tests {
         let vm_code = compiler.get_vm_code();
         
         let expected_code = vec![
-            "label l1",
+            "label WHILE_1",
             "push local 0",
             "push constant 0",
             "gt",
             "not",
-            "if-goto l2",
+            "if-goto WHILE_2",
             "push local 0",
             "call Output.printInt 1",
             "pop temp 0",
@@ -630,8 +633,8 @@ mod tests {
             "push constant 1",
             "sub",
             "pop local 0",
-            "goto l1",
-            "label l2",
+            "goto WHILE_1",
+            "label WHILE_2",
         ]
         .join("\n");
 
